@@ -34,6 +34,7 @@ class ShaderProgram {
   unifModelInvTr: WebGLUniformLocation;
   unifViewProj: WebGLUniformLocation;
   unif2DProj: WebGLUniformLocation;
+  unif3DProj: WebGLUniformLocation;
   unifCameraAxes: WebGLUniformLocation;
   unifTime: WebGLUniformLocation;
   unifRef: WebGLUniformLocation;
@@ -68,11 +69,13 @@ class ShaderProgram {
     this.unifModelInvTr       = gl.getUniformLocation(this.prog, "u_ModelInvTr");
     this.unifViewProj         = gl.getUniformLocation(this.prog, "u_ViewProj");
     this.unif2DProj           = gl.getUniformLocation(this.prog, "u_2DProj");
+    this.unif3DProj           = gl.getUniformLocation(this.prog, "u_3DProj");
     this.unifCameraAxes       = gl.getUniformLocation(this.prog, "u_CameraAxes");
     this.unifTime             = gl.getUniformLocation(this.prog, "u_Time");
     this.unifEye              = gl.getUniformLocation(this.prog, "u_Eye");
     this.unifRef              = gl.getUniformLocation(this.prog, "u_Ref");
     this.unifUp               = gl.getUniformLocation(this.prog, "u_Up");
+    this.unifDimensions       = gl.getUniformLocation(this.prog, "u_Dimensions");
     this.unifShowElevation    = gl.getUniformLocation(this.prog, "u_ShowElevation");
     this.unifShowPopulation   = gl.getUniformLocation(this.prog, "u_ShowPopulation");
     this.unifWaterLevel       = gl.getUniformLocation(this.prog, "u_WaterLevel");
@@ -130,6 +133,13 @@ class ShaderProgram {
     this.use();
     if (this.unif2DProj !== -1) {
       gl.uniformMatrix3fv(this.unif2DProj, false, p);
+    }
+  }
+
+  set3DProjMatrix(p: mat4) {
+  this.use();
+    if (this.unif3DProj !== -1) {
+      gl.uniformMatrix4fv(this.unif3DProj, false, p);
     }
   }
 
@@ -219,8 +229,6 @@ class ShaderProgram {
       gl.vertexAttribDivisor(this.attrUV, 0); // Advance 1 index in pos VBO for each vertex
     }
 
-    // TODO: Set up attribute data for additional instanced rendering data as needed
-
     d.bindIdx();
     // drawElementsInstanced uses the vertexAttribDivisor for each "in" variable to
     // determine how to link it to each drawn instance of the bound VBO.
@@ -233,8 +241,12 @@ class ShaderProgram {
     // by the GPU, thus being the same value for the first set of four vertices,
     // then advancing to a new value for the next four, then the next four, and
     // so on.
-    gl.drawElementsInstanced(d.drawMode(), d.elemCount(), gl.UNSIGNED_INT, 0, d.numInstances);
-
+    if(d.instanced) {
+      gl.drawElementsInstanced(d.drawMode(), d.elemCount(), gl.UNSIGNED_INT, 0, d.numInstances);
+    } else {
+      gl.drawElements(d.drawMode(), d.elemCount(), gl.UNSIGNED_INT, 0);
+    }
+    
     if (this.attrPos != -1) gl.disableVertexAttribArray(this.attrPos);
     if (this.attrNor != -1) gl.disableVertexAttribArray(this.attrNor);
     if (this.attrCol != -1) gl.disableVertexAttribArray(this.attrCol);

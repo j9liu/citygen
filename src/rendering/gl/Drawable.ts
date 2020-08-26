@@ -23,6 +23,7 @@ abstract class Drawable {
   transform4Generated: boolean = false;
   uvGenerated: boolean = false;
 
+  instanced: boolean = false; // Set true if this geometry is meant to be instanced.
   numInstances: number = 0; // How many instances of this Drawable the shader program should draw
 
   abstract create() : void;
@@ -133,7 +134,7 @@ abstract class Drawable {
     return this.transform3Generated;
   }
 
-  bindTransform3(): boolean {
+  bindTransform4(): boolean {
     if (this.transform4Generated) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bufTransform4);
     }
@@ -154,6 +155,10 @@ abstract class Drawable {
 
   drawMode(): GLenum {
     return gl.TRIANGLES;
+  }
+
+  setInstanced(val: boolean) {
+    this.instanced = val;
   }
 
   setNumInstances(num: number) {

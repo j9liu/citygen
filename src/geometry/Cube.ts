@@ -6,6 +6,7 @@ class Cube extends Drawable {
   indices: Uint32Array;
   positions: Float32Array;
   normals: Float32Array;
+  colors: Float32Array;
   center: vec4;
   transcol1: Float32Array; // Data for bufTransform1
   transcol2: Float32Array; // Data for bufTransform2
@@ -84,6 +85,11 @@ class Cube extends Drawable {
     this.generateIdx();
     this.generatePos();
     this.generateNor();
+    this.generateCol();
+    this.generateTransform1();
+    this.generateTransform2();
+    this.generateTransform3();
+    this.generateTransform4();
 
     this.count = this.indices.length;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.bufIdx);

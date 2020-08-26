@@ -2,21 +2,34 @@ import {vec2} from 'gl-matrix';
 import Edge from './Edge'
 
 export default class Node {
-  position: vec2 = vec2.create();
   x: number;
   y: number;
   id: number;
 
   constructor(pos: vec2, i: number) {
-    vec2.copy(this.position, pos);
-    this.x = this.position[0];
-    this.y = this.position[1];
+    let copy : vec2 = vec2.create();
+    vec2.copy(copy, pos);
+    this.x = copy[0];
+    this.y = copy[1];
     this.id = i;
   }
 
+  getPosition() : vec2 {
+    return vec2.fromValues(this.x, this.y);
+  }
+
+  changePosition(pos: vec2) {
+    this.x = pos[0];
+    this.y = pos[1];
+  }
+
+  equals(n: Node, epsilon: number) : boolean {
+    return Math.abs(this.x - n.x) < epsilon
+        && Math.abs(this.y - n.y) < epsilon;
+  }
 
   distanceFrom(pos: vec2) {
-    return vec2.distance(this.position, pos);
+    return vec2.distance(vec2.fromValues(this.x, this.y), pos);
   }
 
 }

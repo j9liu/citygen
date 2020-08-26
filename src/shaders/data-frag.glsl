@@ -1,20 +1,13 @@
 #version 300 es
+precision highp float;
 
-uniform mat4 u_Model;
-uniform vec2 u_Dimensions; // We use this to refer to the scale of the plane
-uniform mat4 u_ViewProj;
-
-uniform mat3 u_CameraAxes; // Used for rendering particles as billboards (quads that are always looking at the camera)
-// gl_Position = center + vs_Pos.x * camRight + vs_Pos.y * camUp;
+uniform vec3 u_Eye, u_Ref, u_Up;
+uniform vec2 u_Dimensions;
 
 uniform float u_WaterLevel;
 
-in vec4 vs_Pos;
-in vec4 vs_Nor;
-in vec4 vs_Col;
-
-out vec3 fs_Pos;
-out vec4 fs_Nor;
+in vec2 fs_Pos;
+out vec4 out_Col;
 
 /* NOISE FUNCTIONS */
 
@@ -95,24 +88,17 @@ float worleyNoise(vec2 pixel) {
     return shortest_distance / cell_size;
 }
 
-void main()
-{	
-	vec4 modelposition = vs_Pos;
-	modelposition = u_Model * modelposition;
+void main() {
+	
+	out_Col = vec4(vec3(0.), 1.);
 
-	vec2 coordinates = vec2(-vs_Pos.x, vs_Pos.z) / u_Dimensions;
-	coordinates *= 2.;
+	// Map data to the RGB components of each pixel.
+	// Let height correspond with the G value
+	// and population with the R value.
 
-	float height = pow(fbm2(2.f * coordinates + vec2(1.f, -0.4f)), 5.f);
-	if(height > u_WaterLevel) {
-		float interpolatedH = smoothstep(0., 1., height - u_WaterLevel);
-		interpolatedH /= 1.6;
-		modelposition.y += interpolatedH;
-	}
+	float height = pow(fbm2(2.f * fs_Pos + vec2(1.f, -0.4f)), 5.f);
+	float population = 1. - worleyNoise(vec2(1.5, -1.0) + 2. * fs_Pos) * fbm2(fs_Pos + vec2(1.3, -2));
 
-  	gl_Position = u_ViewProj * modelposition;
-
-  	fs_Pos = vs_Pos.xyz;
-  	fs_Nor = u_ViewProj * u_Model * vs_Nor;
-
+	out_Col.g = height / 5.;
+  	out_Col.r = population;
 }

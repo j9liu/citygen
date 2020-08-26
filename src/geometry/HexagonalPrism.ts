@@ -6,7 +6,12 @@ class HexagonalPrism extends Drawable {
   indices: Uint32Array;
   positions: Float32Array;
   normals: Float32Array;
+  colors: Float32Array;
   center: vec4;
+  transcol1: Float32Array; // Data for bufTransform1
+  transcol2: Float32Array; // Data for bufTransform2
+  transcol3: Float32Array; // Data for bufTransform3
+  transcol4: Float32Array; // Data for bufTransform4
 
   constructor(center: vec3) {
     super(); // Call the constructor of the super class. This is required.
@@ -21,13 +26,13 @@ class HexagonalPrism extends Drawable {
                                     0, 4, 5,
                                     6, 7, 8, // bottom hexagon
                                     6, 8, 9,
-                                    6, 9, 10
+                                    6, 9, 10,
                                     6, 10, 11,
                                     12, 13, 14, // upperright side
                                     12, 14, 15,
                                     16, 17, 18, // uppermost side
                                     16, 18, 19,
-                                    20, 21, 22  // upperleft side
+                                    20, 21, 22,  // upperleft side
                                     20, 22, 23,
                                     24, 25, 26, // lowerleft side
                                     24, 26, 27,

@@ -4,6 +4,9 @@ class Turtle {
 	position: vec2 = vec2.create();
   orientation: vec2 = vec2.create();
   depth: number = 0;
+  stepLength: number = 0;
+  stepDir: vec2 = vec2.create();
+  rotationTotal: number = 0;
 
   constructor(pos: vec2, orient: vec2, dep: number) {
     vec2.copy(this.position, pos);
@@ -19,8 +22,16 @@ class Turtle {
 
   rotate(deg: number) {
     let transform : mat3 = mat3.create();
-    mat3.rotate(transform, transform, deg * 0.01745329251);
+    mat3.rotate(transform, transform, deg * Math.PI / 180);
     vec2.transformMat3(this.orientation, this.orientation, transform);
+  }
+
+  setPosition(pos: vec2) {
+    vec2.copy(this.position, pos);
+  }
+
+  setOrientation(orient: vec2) {
+    vec2.copy(this.orientation, orient);
   }
  
 }

@@ -1,15 +1,15 @@
-import {vec3, vec4} from 'gl-matrix';
+import {vec2, vec3} from 'gl-matrix';
 import Drawable from '../rendering/gl/Drawable';
 import {gl} from '../globals';
 
-class Square extends Drawable {
+class Circle extends Drawable {
   indices: Uint32Array;
   positions: Float32Array;
   colors: Float32Array;
   transcol1: Float32Array; // Data for bufTransform1
   transcol2: Float32Array; // Data for bufTransform2
   transcol3: Float32Array; // Data for bufTransform3
-  transcol4: Float32Array; // Data for bufTransform4
+
 
   constructor() {
     super(); // Call the constructor of the super class. This is required.
@@ -17,12 +17,29 @@ class Square extends Drawable {
 
   create() {
 
-  this.indices = new Uint32Array([0, 1, 2,
-                                  0, 2, 3]);
-  this.positions = new Float32Array([-0.5, 0, -0.5, 1,
-                                     0.5, 0, -0.5, 1,
-                                     0.5, 0, 0.5, 1,
-                                     -0.5, 0, 0.5, 1]);
+    let points : number = 15;
+    let idx : Array<number> = [],
+        pos : Array<number> = [];
+
+    let twopi : number = 6.28318531;
+
+    for(let i = 0; i < points; i++) {
+      let p : vec2 = vec2.fromValues(1., 0.);
+      vec2.rotate(p, p, vec2.fromValues(0, 0), i * twopi / points);
+      pos.push(p[0]);
+      pos.push(p[1]);
+      pos.push(0);
+      pos.push(1);
+    }
+
+    for(let i = 1; i < points - 1; i++) {
+      idx.push(0);
+      idx.push(i);
+      idx.push(i + 1);
+    }
+
+    this.indices = new Uint32Array(idx);
+    this.positions = new Float32Array(pos);
 
     this.generateIdx();
     this.generatePos();
@@ -30,7 +47,6 @@ class Square extends Drawable {
     this.generateTransform1();
     this.generateTransform2();
     this.generateTransform3();
-    this.generateTransform4();
 
     this.count = this.indices.length;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.bufIdx);
@@ -39,16 +55,15 @@ class Square extends Drawable {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bufPos);
     gl.bufferData(gl.ARRAY_BUFFER, this.positions, gl.STATIC_DRAW);
 
-    console.log(`Created square`);
+    console.log(`Created circle`);
   }
 
-  setInstanceVBOs(col1: Float32Array, col2: Float32Array, col3: Float32Array, col4: Float32Array,
+  setInstanceVBOs(col1s: Float32Array, col2s: Float32Array, col3s: Float32Array,
                   colors: Float32Array) {
     this.colors = colors;
-    this.transcol1 = col1;
-    this.transcol2 = col2;
-    this.transcol3 = col3;
-    this.transcol4 = col4;
+    this.transcol1 = col1s;
+    this.transcol2 = col2s;
+    this.transcol3 = col3s;
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bufCol);
     gl.bufferData(gl.ARRAY_BUFFER, this.colors, gl.STATIC_DRAW);
@@ -62,9 +77,7 @@ class Square extends Drawable {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bufTransform3);
     gl.bufferData(gl.ARRAY_BUFFER, this.transcol3, gl.STATIC_DRAW);
  
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.bufTransform4);
-    gl.bufferData(gl.ARRAY_BUFFER, this.transcol4, gl.STATIC_DRAW);
   }
 };
 
-export default Square;
+export default Circle;

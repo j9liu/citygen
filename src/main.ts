@@ -1,166 +1,160 @@
-import {vec2, vec3, vec4, mat3} from 'gl-matrix';
+import {vec2, vec3, vec4, mat3 ,mat4} from 'gl-matrix';
 import * as Stats from 'stats-js';
 import * as DAT from 'dat-gui';
-
 import Cube from './geometry/Cube';
 import HexagonalPrism from './geometry/HexagonalPrism';
 import Square from './geometry/Square';
 import Plane from './geometry/Plane';
 import ScreenQuad from './geometry/ScreenQuad';
-
 import OpenGLRenderer from './rendering/gl/OpenGLRenderer';
 import Camera from './Camera';
 import {setGL} from './globals';
 import ShaderProgram, {Shader} from './rendering/gl/ShaderProgram';
+import Edge from './road/Edge';
+import RoadGenerator from './road/RoadGenerator';
+import CityGenerator from './city/CityGenerator';
+import {testCityGenerator} from './test';
 
 // Define an object with application parameters and button callbacks
 // This will be referred to by dat.GUI's functions that add GUI elements.
 const controls = {
   displayElevation: false,
-  displayPopDensity: false,
+  displayPopDensity: true,
   waterLevel: 0.5,
-  maxHighwayLength: 200,
-  maxHighwayAngle: 60,
-  'Generate': loadScene
+  startPositionX: 73.4075,
+  startPositionY: 22.76785,
+  lockStartPos: false,
+  useRandomness: true,
+  maxIterations: 20,
+  globalGridAngle: 22.5,
+  showGridAngleHelp: false,
+  'Generate New': loadScene
 };
 
 let square: Square,
     screenQuad: ScreenQuad,
     cube: Cube,
+    roadCube: Cube,
     hexagonalPrism: HexagonalPrism,
     plane: Plane,
-    time: number = 0.0;
-
-//// NOISE FUNCTIONS FOR DATA GENERATION ////
-function random(p: vec2, seed: vec2) : number {
-  let sum : vec2 = vec2.create();
-  vec2.add(sum, p, seed);
-  let temp : number = Math.sin(vec2.dot(sum, vec2.fromValues(127.1 * 43758.5453, 311.7 * 43758.5453)));
-  return temp - Math.floor(temp);
-}
-
-function interpNoise2D(x: number, y: number) : number {
-  let intX = Math.floor(x);
-  let fractX = x - intX;
-  let intY = Math.floor(y);
-  let fractY = x - intY;
-
-  let v1 : number = random(vec2.fromValues(intX, intY), vec2.fromValues(0, 0));
-  let v2 : number = random(vec2.fromValues(intX + 1, intY), vec2.fromValues(0, 0));
-  let v3 : number = random(vec2.fromValues(intX, intY + 1), vec2.fromValues(0, 0));
-  let v4 : number = random(vec2.fromValues(intX + 1, intY + 1), vec2.fromValues(0, 0));
-
-  let i1 : number = v1 * (1 - fractX) + v2 * fractX;
-  let i2 : number = v3 * (1 - fractX) + v4 * fractX;
-  return i1 * (1 - fractY) + i2 * fractY;
-}
-
-function fbm2(p: vec2) : number {
-  let total: number = 0.
-  let persistence: number = 0.5;
-  let octaves: number = 8;
-
-  for(let i = 0; i < octaves; i++) {
-    let freq: number = Math.pow(2., i);
-    let amp: number = Math.pow(persistence, i);
-    total += interpNoise2D(p[0] * freq, p[1] * freq) * amp;
-  }
-
-  return total;
-}  
-
-let cellSize : number = 2.;
-
-function generate_point(cell: vec2) : vec2 {
-    let p : vec2 = vec2.fromValues(cell[0], cell[1]);
-    let rand : vec2 = vec2.fromValues(vec2.dot(p, vec2.fromValues(127.1, 311.7)),
-                                     vec2.dot(p, vec2.fromValues(269.5, 183.3)) * 43758.5453);
-    let r0 : number = Math.sin(rand[0]);
-    let r1 : number = Math.sin(rand[1]);
-    vec2.add(p, p, vec2.fromValues(r0 - Math.floor(r0), r1 - Math.floor(r1))); 
-    vec2.scale(p, p, cellSize);
-    return p;
-}
-
-function worleyNoise(p: vec2) : number {
-    let cell : vec2 = vec2.fromValues(Math.floor(p[0] / cellSize), Math.floor(p[1] / cellSize));
-    let point : vec2 = generate_point(cell);
-    let shortest_distance : number = vec2.distance(p, point);
-
-   // compute shortest distance from cell + neighboring cell points
-    for(let i = -1.; i <= 1.; i += 1.) {
-        let ncell_x : number = cell[0] + i;
-        for(let j = -1.; j <= 1.; j += 1.) {
-            let ncell_y : number = cell[1] + j;
-
-            // get the point for that cell
-            let npoint : vec2 = generate_point(vec2.fromValues(ncell_x, ncell_y));
-
-            // compare to previous distances
-            let distance = vec2.distance(p, npoint);
-            if(distance < shortest_distance) {
-                shortest_distance = distance;
-            }
-        }
-    }
-
-    return shortest_distance / cellSize;
-}
-
-//// ELEVATION / POPULATION FUNCTIONS ////
-// The given point is always defined in city space.
-
-function getElevation(point : vec2) : number {
-  let tpoint : vec2 = vec2.create();
-  vec2.divide(tpoint, point, vec2.fromValues(cw, ch));
-  let temp : vec2 = vec2.create();
-  vec2.scaleAndAdd(temp, vec2.fromValues(1., -0.4), tpoint, 2);
-  return Math.pow(fbm2(temp), 5.);
-}
-
-function getPopulation(point : vec2) : number {
-  let tpoint : vec2 = vec2.create();
-  vec2.divide(tpoint, point, vec2.fromValues(cw, ch));
-  let temp : vec2 = vec2.create();
-  vec2.scaleAndAdd(temp, vec2.fromValues(0.3, 7.0), tpoint, 2.);
-  return 1. - worleyNoise(tpoint) * fbm2(temp);
-}
-
-/* 
- * Define the bounds of "city space", which will to go from (0, 0) in the lower left corner
- * to (cw, ch) in the upper right corner. All coordinates here function within that space
- * and are then transformed to fit the screen at the end.
- */
-
-const cw: number = 512;
-const ch: number = 512;
+    time: number = 0.0,
+    rgCityHeight: number = 512, // the width will scale based on window's aspect ratio.
+    rgGridHeight: number = 8,
+    cgCityHeight: number = 512,
+    cgGridHeight: number = cgCityHeight / 2,
+    planeHeight: number = 17,
+    aspectRatio: number = window.innerWidth / window.innerHeight,
+    rgen: RoadGenerator,
+    cgen: CityGenerator,
+    projectionMatrix: mat4;
 
 
-// Define the size of the plane used to ground our city
-const pw: number = 100;
-const ph: number = 100;
+//////////////////////
+// RENDERING ARRAYS 
+//////////////////////
 
-///////////////////////////////////
-//////   CITY GENERATION     //////
-///////////////////////////////////
-/*
-let cg : CityGenerator = new CityGenerator(cw, ch);
-cg.rasterizeWater(getElevation, controls.waterLevel);
-cg.rasterizeRoads();
-cg.generateBuildingPoints();
-cg.generateBuildings(getPopulation);*/
+let buildingTCol1Array : Array<number>,
+    buildingTCol2Array : Array<number>,
+    buildingTCol3Array : Array<number>,
+    buildingTCol4Array : Array<number>,
+    buildingColorsArray : Array<number>;
 
 function createMeshes() {
-  square = new Square();  
-  square.create();
+  square = new Square();
+  cube = new Cube(vec3.fromValues(0, 0, 0));
+  roadCube = new Cube(vec3.fromValues(0, 0, 0));
   screenQuad = new ScreenQuad();
+  hexagonalPrism = new HexagonalPrism(vec3.fromValues(0, 0, 0));
+  plane = new Plane(vec3.fromValues(0,0,0),
+                    vec2.fromValues(aspectRatio * planeHeight, planeHeight), 12);
+  cube.create();
+  cube.setInstanced(true);
+  roadCube.create();
+  roadCube.setInstanced(true);
+  square.create();
   screenQuad.create();
-  plane = new Plane(vec3.fromValues(0,0,0), vec2.fromValues(pw,ph), 20);
+  hexagonalPrism.create();
   plane.create();
 }
 
-function loadScene() {
+function initializeGenerators() {
 
+  // Calculate projection matrix for roads
+  let translate = mat4.create(),
+          scale = mat4.create(),
+          planeScale = mat4.create();
+
+  mat4.fromTranslation(translate, vec3.fromValues(aspectRatio * planeHeight / 2,
+                                                  controls.waterLevel + 0.15,
+                                                  -planeHeight / 2));
+
+  mat4.fromScaling(scale, vec3.fromValues(-2 / Math.floor(rgCityHeight), 1, 2 / rgCityHeight));
+  mat4.fromScaling(planeScale, vec3.fromValues(planeHeight / 2,
+                                                1, planeHeight / 2));
+
+  projectionMatrix = mat4.create();
+  mat4.multiply(projectionMatrix, planeScale, scale);
+  mat4.multiply(projectionMatrix, translate, projectionMatrix);
+
+  // Calculate grid based on window dimensions
+  let rgCityDimensions : vec2 = vec2.fromValues(Math.floor(aspectRatio * rgCityHeight), rgCityHeight),
+      rgGridDimensions : vec2 = vec2.fromValues(Math.floor(aspectRatio * rgGridHeight), rgGridHeight);
+
+  let cgCityDimensions : vec2 = vec2.fromValues(Math.floor(aspectRatio * cgCityHeight), cgCityHeight),
+      cgGridDimensions : vec2 = vec2.fromValues(Math.floor(aspectRatio * cgGridHeight), cgGridHeight);
+
+
+  rgen = new RoadGenerator(rgCityDimensions, rgGridDimensions);
+  cgen = new CityGenerator(cgCityDimensions, cgGridDimensions);
+}
+
+function generateRoads() {
+
+  rgen.setUseMyStartPos(controls.lockStartPos);
+  if(controls.lockStartPos) {
+    rgen.startPos[0] = controls.startPositionX;
+    rgen.startPos[1] = controls.startPositionY;
+  }
+
+  rgen.setWaterLevel(controls.waterLevel);
+  rgen.setUseRandomness(controls.useRandomness);
+  rgen.setMaxGridIterations(controls.maxIterations);
+  rgen.setGlobalGridAngle(controls.globalGridAngle);
+  rgen.reset();
+  controls.startPositionX = rgen.startPos[0];
+  controls.startPositionY = rgen.startPos[1];
+  rgen.generateRoads();
+
+  let instances : Array<Array<number>> = rgen.getInstancedAttributes();
+
+  roadCube.setInstanceVBOs(new Float32Array(instances[0]),
+                           new Float32Array(instances[1]),
+                           new Float32Array(instances[2]),
+                           new Float32Array(instances[3]),
+                           new Float32Array(instances[4]));
+  roadCube.setNumInstances(rgen.getRoadCount());
+}
+
+function generateCity() {
+  cgen.setWaterLevel(controls.waterLevel);
+  cgen.reset();
+  cgen.setRoads(rgen.getAllRoads());
+  cgen.generateCity();
+  let points : Array<vec2> = cgen.getBuildingPositions();
+
+  let instances : Array<Array<number>> = cgen.getInstancedAttributes();
+
+  cube.setInstanceVBOs(new Float32Array(instances[0]),
+                           new Float32Array(instances[1]),
+                           new Float32Array(instances[2]),
+                           new Float32Array(instances[3]),
+                           new Float32Array(instances[4]));
+  cube.setNumInstances(cgen.getBuildingCount());
+}
+
+function loadScene() {
+  generateRoads();
+  generateCity();
 }
 
 function main() {
@@ -188,17 +182,21 @@ function main() {
   // Create meshes
   createMeshes();
 
-  // Initial call to load scene
-  loadScene();
-
-  const camera = new Camera(vec3.fromValues(50, 50, 10), vec3.fromValues(50, 50, 0));
+  const camera = new Camera(vec3.fromValues(0, 10, -20), vec3.fromValues(0, 0, 0));
 
   const renderer = new OpenGLRenderer(canvas);
   renderer.setClearColor(0.2, 0.2, 0.2, 1);
 
-  const instancedShader = new ShaderProgram([
+  // Create shaders
+
+  const road = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/instanced-vert.glsl')),
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/instanced-frag.glsl')),
+  ]);
+
+  const building = new ShaderProgram([
+    new Shader(gl.VERTEX_SHADER, require('./shaders/building-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/building-frag.glsl')),
   ]);
 
   const terrain = new ShaderProgram([
@@ -206,23 +204,91 @@ function main() {
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/terrain-frag.glsl')),
   ]);
 
+  terrain.setDimensions(aspectRatio * planeHeight, planeHeight);
+  terrain.setWaterLevel(controls.waterLevel);
+
   const flat = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/flat-vert.glsl')),
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/flat-frag.glsl')),
   ]);
 
+  const data = new ShaderProgram([
+    new Shader(gl.VERTEX_SHADER, require('./shaders/data-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/data-frag.glsl')),
+  ]);
+
+  //testCityGenerator();
+
+  // Create and bind the texture
+  const t_width = window.innerWidth;
+  const t_height = window.innerHeight;
+  var texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, t_width, t_height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  
+  // Set texture's render settings
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);   
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); 
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  // Create and bind the frame buffer
+  var texture_fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, texture_fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+
+  // Create and bind the render buffer
+  var texture_rb = gl.createRenderbuffer();
+  gl.bindRenderbuffer(gl.RENDERBUFFER, texture_rb);
+  gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, t_width, t_height);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, texture_rb);
+
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+
+  if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE) {
+      console.log("error");
+  }
+
+  // Render data first
+  gl.viewport(0, 0, window.innerWidth, window.innerHeight);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  camera.update();
+  renderer.render(camera, data, [screenQuad]);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, texture_fb);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+  let pixelData = new Uint8Array(t_width * t_height * 4);
+  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE) {
+    gl.readPixels(0, 0, t_width, t_height, gl.RGBA, gl.UNSIGNED_BYTE, pixelData);
+  }
+
+  initializeGenerators();
+  rgen.setData(pixelData, vec2.fromValues(t_width, t_height));
+  cgen.setData(pixelData, vec2.fromValues(t_width, t_height));
+  road.set3DProjMatrix(projectionMatrix);
+  building.set3DProjMatrix(projectionMatrix);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, window.innerWidth, window.innerHeight);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  gl.enable(gl.DEPTH_TEST);
+
+  // Initial call to load scene
+  loadScene();
+
   // This function will be called every frame
   function tick() {
     camera.update();
     stats.begin();
-    instancedShader.setTime(time);
     flat.setTime(time++);
     gl.viewport(0, 0, window.innerWidth, window.innerHeight);
     renderer.clear();
-    renderer.render(camera, flat, [screenQuad],
-                    controls.displayElevation, controls.displayPopDensity, controls.waterLevel);
-    renderer.render(camera, terrain, [plane], false, false, 0);
-    renderer.render(camera, instancedShader, [], false, false, 0);
+    renderer.render(camera, terrain, [plane]);
+    renderer.render(camera, road, [roadCube]);
+    renderer.render(camera, building, [cube]);
     stats.end();
 
     // Tell the browser to call `tick` again whenever it renders a new frame

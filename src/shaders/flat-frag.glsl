@@ -114,5 +114,6 @@ float worleyNoise(vec2 pixel) {
 
 void main() {
 	vec3 base = vec3(224., 249., 241.) / 255.;
+	//rgb(255, 246, 219)
 	out_Col = vec4(base, 1.);
 }
