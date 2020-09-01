@@ -1,5 +1,8 @@
 import {vec2, vec3, vec4, mat3, mat4} from 'gl-matrix';
 import Edge from './../road/Edge';
+import Drawable from '../rendering/gl/Drawable';
+import Cube from '../geometry/Cube';
+import HexagonalPrism from '../geometry/HexagonalPrism';
 
 export default class CityGenerator {
   public citySize: vec2; // the specified dimensions of city space.
@@ -12,19 +15,32 @@ export default class CityGenerator {
   // where each cell tracks if it can be built on or not. A cell is considered
   // invalid if there is a road, a building, or a body of water occupying
   // its space. The cell that an item is located in is given by y * cellNum + x.
-  private validCells: Array<boolean>;
+
+  // The numbers in this array correspond to different states of the cells.
+  // 0 = empty
+  // 1 = water
+  // 2 = road
+  // 3 = building
+
+  private validCells: Array<number>;
   private roads: Array<Edge>;
   private highwayWidth: number = 3;
-  private streetWidth: number = 1.4;
+  private streetWidth: number = 1.2;
 
-  private numBuildingsGoal: number = 50;
+  private numBuildingsGoal: number = 250;
   private buildingPositions: Array<vec2>;
   private cubeTransformMats: Array<mat4>;
   private hexTransformMats: Array<mat4>;
 
+  // reference these for their positions;
+  // do NOT send the instanced vbos to these.
+  private referenceCube : Cube = new Cube(vec3.fromValues(0, 0, 0));
+  private referenceHexPrism : HexagonalPrism = new HexagonalPrism(vec3.fromValues(0, 0, 0));
+
   // The first four arrays represent the columns of the 
   // transform matrix; the last one corresponds to the colors.
-  private instancedAttributes : Array<Array<number>>;
+  private cubeInstancedAttributes : Array<Array<number>>;
+  private hexInstancedAttributes : Array<Array<number>>;
 
   // Pixel data that is rendered in the frame buffer
   // and passed into the generator.
@@ -82,7 +98,7 @@ export default class CityGenerator {
     this.cellWidth = this.citySize[0] / this.gridSize[0];
     this.validCells = [];
     for(let i : number = 0; i < this.gridSize[0] * this.gridSize[1]; i++) {
-      this.validCells.push(true);
+      this.validCells.push(0);
     }
 
     this.roads = [];
@@ -90,9 +106,12 @@ export default class CityGenerator {
     this.cubeTransformMats = [];
     this.hexTransformMats = [];
 
-    this.instancedAttributes = [];
+    this.cubeInstancedAttributes = [];
+    this.hexInstancedAttributes = [];
+
     for(let i = 0; i < 5; i++) {
-      this.instancedAttributes.push([]);
+      this.cubeInstancedAttributes.push([]);
+      this.hexInstancedAttributes.push([]);
     }
   }
 
@@ -112,19 +131,19 @@ export default class CityGenerator {
     let cellx : number = Math.floor(p[0] / this.cellWidth), 
         celly : number = Math.floor(p[1] / this.cellWidth);
 
-    return this.getCellNumberFromRowCol(cellx, celly);
+    return this.getCellNumberFromXY(cellx, celly);
   }
 
-  public getCellNumberFromRowCol(x: number, y: number) : number {
-    let celln : number = Math.floor(this.gridSize[0] * y + x);
-    if(celln < 0 || celln >= this.gridSize[0] * this.gridSize[1]) {
+  public getCellNumberFromXY(x: number, y: number) : number {
+    if(x < 0 || x >= this.gridSize[0] || y < 0 || y >= this.gridSize[1]) {
       return undefined;
     }
 
-    return celln;
+    return Math.floor(this.gridSize[0] * y + x);
   }
 
-  public getRowColFromCellNumber(cellNum: number) : vec2 {
+  // Returns (x, y), aka (col, row).
+  public getXYFromCellNumber(cellNum: number) : vec2 {
     if(cellNum < 0 || cellNum >= this.gridSize[0] * this.gridSize[1]) {
       return undefined;
     }
@@ -138,9 +157,9 @@ export default class CityGenerator {
       return undefined;
     }
 
-    let rowCol: vec2 = this.getRowColFromCellNumber(cellNum);
-    let xVal: number = (rowCol[0] + 0.5) * this.cellWidth,
-        yVal: number = (rowCol[1] + 0.5) * this.cellWidth;
+    let xy: vec2 = this.getXYFromCellNumber(cellNum);
+    let xVal: number = (xy[0] + 0.5) * this.cellWidth,
+        yVal: number = (xy[1] + 0.5) * this.cellWidth;
 
     return vec2.fromValues(xVal, yVal);
   }
@@ -152,57 +171,42 @@ export default class CityGenerator {
       return undefined;
     }
 
-    let rowCol: vec2 = this.getRowColFromCellNumber(cellNum);
-    let xValBL: number = rowCol[0] * this.cellWidth,
-        yValBL: number = rowCol[1] * this.cellWidth,
-        xValTR: number = (rowCol[0] + 1) * this.cellWidth,
-        yValTR: number = (rowCol[1] + 1) * this.cellWidth;
+    let xy: vec2 = this.getXYFromCellNumber(cellNum);
+    let xValBL: number = xy[0] * this.cellWidth,
+        yValBL: number = xy[1] * this.cellWidth,
+        xValTR: number = (xy[0] + 1) * this.cellWidth,
+        yValTR: number = (xy[1] + 1) * this.cellWidth;
 
     return [vec2.fromValues(xValBL, yValBL),
             vec2.fromValues(xValTR, yValTR)];
   }
 
-  // Given an edge, find all of the cells that it intersects
-  public getEdgeCells(e: Edge) : Array<number> {
-    let ret : Array<number> = [];
 
-    let leftBound : number = this.getPosColNumber(e.endpoint1);
-    let rightBound : number = this.getPosColNumber(e.endpoint2);
-    let bottomBound : number = this.getPosRowNumber(e.endpoint1);
-    let topBound : number = this.getPosRowNumber(e.endpoint2);
-
-    if(leftBound > rightBound) {
-      rightBound = leftBound;
-      leftBound = this.getPosColNumber(e.endpoint2);
+  // gets all eight neighbors of the current cell
+  public getNeighborsOfCell(cellNum: number) : Array<number> {
+    if(cellNum < 0 || cellNum >= this.gridSize[0] * this.gridSize[1]) {
+      return undefined;
     }
 
-    if(bottomBound > topBound) {
-      topBound = bottomBound;
-      bottomBound = this.getPosRowNumber(e.endpoint2);
-    }
+    let neighbors : Array<number> = [];
+    let xy : vec2 = this.getXYFromCellNumber(cellNum);
+    for(let i = xy[1] - 1; i <= xy[1] + 1; i++) {
+      for (let j = xy[0] - 1; j <= xy[0] + 1; j++) {
+        let nCellNum : number = this.getCellNumberFromXY(j, i);
 
-    rightBound = Math.min(rightBound, this.gridSize[0]);
-    topBound = Math.min(topBound, this.gridSize[1]);
-
-    for(let j = bottomBound; j <= topBound; j++) {
-      for(let i = leftBound; i <= rightBound; i++) {
-
-        let cellNumber = this.gridSize[0] * j + i;
-        if(cellNumber < 0 || cellNumber >= this.gridSize[0] * this.gridSize[1]) {
-          continue; // cell out of bounds
+        if(nCellNum == undefined || nCellNum == cellNum) {
+          continue;
         }
 
-        if(e.intersectQuad(vec2.fromValues(i * this.cellWidth, j * this.cellWidth),
-                           vec2.fromValues((i + 1) * this.cellWidth, (j + 1) * this.cellWidth))) {
-          ret.push(cellNumber);
-        }
+        neighbors.push(nCellNum);
       }
-    }
-    return ret;
+    } 
+
+    return neighbors;
   }
 
   //////////////////////////////////////
-  // "RASTERIZATION" FUNCTIONS
+  // RASTERIZATION FUNCTIONS
   //////////////////////////////////////
 
   // Assumes that data and water level have been specified
@@ -211,19 +215,46 @@ export default class CityGenerator {
       let midpoint: vec2 = this.getMidpointOfCell(i);
       let height: number = this.getElevation(midpoint);
       if(height <= this.waterLevel) {
-        this.validCells[i] = false;
+        this.validCells[i] = 1;
       }
     }
   }
 
   private rasterizeRoads() {
-    this.roads = [];
-    this.roads.push(new Edge(vec2.fromValues(0, 0), vec2.fromValues(512, 512), 0, true));
-    //console.log(this.roads);
     for(let road of this.roads) {
-      let cellsIntersected : Array<number> = this.getEdgeCells(road);
-      for(let i: number = 0; i < cellsIntersected.length; i++) {
-        this.validCells[i] = false;
+      let roadWidth : number = this.streetWidth;
+      if(road.highway) {
+        roadWidth = this.highwayWidth;
+      }
+
+      let checkNeighbors : boolean = roadWidth > 1.5 * this.cellWidth;
+
+      let endpoint1XY : vec2 = this.getXYFromCellNumber(this.getPosCellNumber(road.endpoint1)),
+          endpoint2XY : vec2 = this.getXYFromCellNumber(this.getPosCellNumber(road.endpoint2));
+
+      let yMin : number = Math.round(Math.min(endpoint1XY[1], endpoint2XY[1])),
+          yMax : number = Math.round(Math.max(endpoint1XY[1], endpoint2XY[1])),
+          xMin : number = Math.round(Math.min(endpoint1XY[0], endpoint2XY[0])),
+          xMax : number = Math.round(Math.max(endpoint1XY[0], endpoint2XY[0]));
+
+      for(let i = yMin; i <= yMax; i++) {
+        for(let j = xMin; j <= xMax; j++) {
+          let cellNum : number = this.getCellNumberFromXY(j, i);
+          let corners : Array<vec2> = this.getCornersOfCell(cellNum);
+          if(road.intersectQuad(corners[0], corners[1])) {
+            this.validCells[cellNum] = 2;
+
+            if(checkNeighbors) {
+              let cellMidpt : vec2 = this.getMidpointOfCell(cellNum);
+              let cellNeighbors : Array<number> = this.getNeighborsOfCell(cellNum);
+              for(let i = 0; i < cellNeighbors.length; i++) {
+                if(vec2.distance(cellMidpt, this.getMidpointOfCell(cellNeighbors[i])) < roadWidth / 2) {
+                  this.validCells[cellNeighbors[i]] = 2;
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -239,7 +270,7 @@ export default class CityGenerator {
       let pos3D : vec3 = vec3.fromValues(pos[0], 2, pos[1]);
       let scale : vec3 = vec3.fromValues(this.cellWidth, 0.3, this.cellWidth);
       let color : vec4 = vec4.fromValues(1, 0, 0, 1);
-      if(this.validCells[i]) {
+      if(this.validCells[i] > 0) {
         color = vec4.fromValues(0, 1, 0, 1);
       }
 
@@ -253,14 +284,14 @@ export default class CityGenerator {
       mat4.multiply(transform, translateMat, scaleMat);
 
       for(let j = 0; j < 4; j++) {
-        this.instancedAttributes[0].push(transform[j]);
-        this.instancedAttributes[1].push(transform[4 + j]);
-        this.instancedAttributes[2].push(transform[8 + j]);
-        this.instancedAttributes[3].push(transform[12 + j]);
+        this.cubeInstancedAttributes[0].push(transform[j]);
+        this.cubeInstancedAttributes[1].push(transform[4 + j]);
+        this.cubeInstancedAttributes[2].push(transform[8 + j]);
+        this.cubeInstancedAttributes[3].push(transform[12 + j]);
       }
 
       for(let j = 0; j < 4; j++) {
-        this.instancedAttributes[4].push(color[j]);
+        this.cubeInstancedAttributes[4].push(color[j]);
       }
     }
   }
@@ -271,15 +302,33 @@ export default class CityGenerator {
     this.buildingPositions = [];
     let numBuildings : number = 0;
     let badLoopCap : number = 0;
-    while(numBuildings < this.numBuildingsGoal) {
+    while(numBuildings < 1) {
       let position : vec2 = vec2.fromValues(Math.random() * this.citySize[0],
                                             Math.random() * this.citySize[1]);
       let cell : number = this.getPosCellNumber(position);
-      if(this.validCells[cell]) {
-        this.buildingPositions.push(position);
-        numBuildings++;
-        badLoopCap = 0;
-        this.validCells[cell] = false;
+      if(this.validCells[cell] == 0) {
+        // Test for nearby roads in a 5 x 5 space. If there
+        // are enough roads filling the space around the point,
+        // then place the point.
+        let threshold : number = 0.2;
+        let xy : vec2 = this.getXYFromCellNumber(cell);
+        let totalRoadCells : number = 0;
+        for(let i = xy[1] - 2; i <= xy[1] + 2; i++) {
+          for(let j = xy[0] - 2; j <= xy[0] + 2; j++) {
+            if(this.validCells[this.getCellNumberFromXY(j, i)] == 2) {
+              totalRoadCells++;
+            }
+          }
+        }
+
+        if(totalRoadCells / 25 > threshold) {
+         this.buildingPositions.push(position);
+          numBuildings++;
+          badLoopCap = 0;
+          this.validCells[cell] = 3;
+        } else {
+          badLoopCap++;
+        }
       } else {
         badLoopCap++;
       }
@@ -290,31 +339,134 @@ export default class CityGenerator {
     }
   }
 
+  private isCube(obj: Drawable): obj is Cube {
+    return obj.count == 36;
+  }
+
+  private isHexagonalPrism(obj: Drawable): obj is HexagonalPrism {
+    return obj.count == 60;
+  }
+
+  public getVec4PositionAtIndexFromShape(d: Drawable, index: number) : vec4 {
+    let shapePositions : Float32Array;
+    let numPositions : number = 0;
+    if(this.isCube(d)) {
+      let cube : Cube = d as Cube;
+      shapePositions = d.positions;
+      numPositions = d.positions.length / 4;
+    } else if(this.isHexagonalPrism(d)) {
+      let hex : HexagonalPrism = d as HexagonalPrism;
+      shapePositions = d.positions;
+      numPositions = d.positions.length / 4;
+    }
+
+    if(index < 0 || index >= numPositions) {
+      return undefined;
+    }
+
+    let trueStartingIndex = index * 4;
+    return vec4.fromValues(shapePositions[trueStartingIndex],
+                           shapePositions[trueStartingIndex + 1],
+                           shapePositions[trueStartingIndex + 2],
+                           shapePositions[trueStartingIndex + 3]);
+  }
+
+  private getRandomPointOfFloorPlan(fpShapes: Array<number>,
+                                    fpTransformations: Array<mat4>) : vec3 {
+    let fpIndex : number = Math.floor(Math.random() * fpShapes.length);
+    let chosenShape : number = fpShapes[fpIndex];
+
+    let chosenIndex : number = -1;
+    // These are directly drawn from the positions array in either class.
+    let bottomCubeIndices : Array<number> = [16, 17, 18, 19];
+    let bottomHexIndices : Array<number>  = [6, 7, 8, 9, 10, 11];
+
+    let originalPos : vec4 = vec4.create();
+
+    if(chosenShape == 4) {
+      chosenIndex = bottomCubeIndices[Math.floor(Math.random() * 4)];
+      originalPos = this.getVec4PositionAtIndexFromShape(this.referenceCube, chosenIndex);
+    } else if(chosenShape == 6) {
+      chosenIndex = bottomHexIndices[Math.floor(Math.random() * 6)];
+      originalPos = this.getVec4PositionAtIndexFromShape(this.referenceHexPrism, chosenIndex);
+    }
+
+    let localTransform : mat4 = fpTransformations[fpIndex];
+    let transformedPos : vec4 = vec4.create();
+    vec4.transformMat4(transformedPos, originalPos, localTransform);
+
+    return vec3.fromValues(transformedPos[0], transformedPos[1], transformedPos[2]);
+  }
+
   private generateBuildings() {
+    this.referenceCube.create();
+    this.referenceHexPrism.create();
+
     for(let p of this.buildingPositions) {
-
-      let height : number = 5;
+      let pop : number = this.getPopulation(p);
       let floorPlanShapes : Array<number> = [];
-      let floorPlanOffsets : Array<number> = [];
+      let floorPlanLocalTransformations : Array<mat4> = [];
+
+      let maxFloors : number = 3;
+      //let maxBuildingHeight: number = pop / 255;
+      let maxBuildingHeight = 10;
+      let height: number = maxBuildingHeight;
+      let minFloorHeight: number = 1;
+      let maxFloorHeight: number = maxBuildingHeight / maxFloors;
+/*
+      if(pop > 0.6 * 255) {
+
+      } else if (pop > 0.25 * 255) {
+
+      } else {
+
+      }*/
+
       while(height > 0) {
-        let shape : number;
+        /*let shape : string;
         if(Math.random() > 0.5) {
-          shape = 6;
+          shape = "hexagonal prism";
         } else {
-          shape = 4;
+          shape = "cube";
+        }*/
+
+        let floorHeight  : number = (maxFloorHeight - minFloorHeight) * Math.random() + minFloorHeight;
+
+        if(height < 2 * minFloorHeight || height - floorHeight < minFloorHeight) {
+          floorHeight = height;
         }
 
-        if(floorPlanShapes.length == 0) {
+        let transformMat : mat4 = mat4.create(),
+            translateMat : mat4 = mat4.create(),
+            rotateMat    : mat4 = mat4.create(),
+            scaleMat     : mat4 = mat4.create();
 
+        if(floorPlanShapes.length > 0) {
+          let newShapeMidpoint : vec3 = this.getRandomPointOfFloorPlan(floorPlanShapes, floorPlanLocalTransformations);
+          newShapeMidpoint[1] += floorHeight / 2;
+          mat4.fromTranslation(translateMat, newShapeMidpoint)
+        } else {
+          mat4.fromTranslation(translateMat, vec3.fromValues(0, floorHeight / 2, 0));
         }
 
-        let floorHeight : number = height * Math.random();
+        let angle : number = Math.random() * 45 * Math.PI / 180;
+        mat4.fromRotation(rotateMat, angle, vec3.fromValues(0, 1, 0));
+        mat4.fromScaling(scaleMat, vec3.fromValues(15, floorHeight, 15));
+
+        mat4.multiply(transformMat, rotateMat, scaleMat);
+        mat4.multiply(transformMat, translateMat, transformMat);
+
+        floorPlanShapes.push(4);
+        floorPlanLocalTransformations.push(transformMat);
+        this.renderFloorPlan(p, floorPlanShapes, floorPlanLocalTransformations);
         height = height - floorHeight;
       }
     }
+    
   }
 
-  private renderBuilding(pos: vec2) {
+  // strictly for the rasterizer tester
+  private renderCube(pos: vec2) {
     let pos3D : vec3 = vec3.fromValues(pos[0], 0, pos[1]);
     let scale : vec3 = vec3.fromValues(3, 1, 3);
 
@@ -330,14 +482,64 @@ export default class CityGenerator {
     mat4.multiply(transform, translateMat, scaleMat);
 
     for(let j = 0; j < 4; j++) {
-      this.instancedAttributes[0].push(transform[j]);
-      this.instancedAttributes[1].push(transform[4 + j]);
-      this.instancedAttributes[2].push(transform[8 + j]);
-      this.instancedAttributes[3].push(transform[12 + j]);
+      this.cubeInstancedAttributes[0].push(transform[j]);
+      this.cubeInstancedAttributes[1].push(transform[4 + j]);
+      this.cubeInstancedAttributes[2].push(transform[8 + j]);
+      this.cubeInstancedAttributes[3].push(transform[12 + j]);
     }
 
     for(let j = 0; j < 4; j++) {
-      this.instancedAttributes[4].push(color[j]);
+      this.cubeInstancedAttributes[4].push(color[j]);
+    }
+  }
+
+  private renderFloorPlan(pos: vec2,
+                          fpShapes: Array<number>,
+                          fpLocalTransformations: Array<mat4>) {
+    let translateToBuildingPos : mat4 = mat4.create();
+    mat4.fromTranslation(translateToBuildingPos, vec3.fromValues(pos[0], 0, pos[1]));
+    for(let i = 0; i < fpShapes.length; i++) { 
+      let worldTransform : mat4 = mat4.create();
+      mat4.multiply(worldTransform, translateToBuildingPos, fpLocalTransformations[i]);
+      switch(fpShapes[i]) {
+        case 4: {
+          for(let j = 0; j < 4; j++) {
+            this.cubeInstancedAttributes[0].push(worldTransform[j]);
+            this.cubeInstancedAttributes[1].push(worldTransform[4 + j]);
+            this.cubeInstancedAttributes[2].push(worldTransform[8 + j]);
+            this.cubeInstancedAttributes[3].push(worldTransform[12 + j]);
+          }
+
+          let cubeColor : vec4 = vec4.fromValues(1, 0, 0, 1);
+
+          for(let j = 0; j < 4; j++) {
+            this.cubeInstancedAttributes[4].push(cubeColor[j]);
+          }
+
+          break;
+        }
+
+        case 6: {
+          for(let j = 0; j < 4; j++) {
+            this.hexInstancedAttributes[0].push(worldTransform[j]);
+            this.hexInstancedAttributes[1].push(worldTransform[4 + j]);
+            this.hexInstancedAttributes[2].push(worldTransform[8 + j]);
+            this.hexInstancedAttributes[3].push(worldTransform[12 + j]);
+          }
+
+          let hexColor : vec4 = vec4.fromValues(0, 1, 0, 1);
+
+          for(let j = 0; j < 4; j++) {
+            this.hexInstancedAttributes[4].push(hexColor[j]);
+          }
+
+          break;
+        }
+
+        default: {
+          break;
+        }
+      }
     }
   }
 
@@ -345,21 +547,34 @@ export default class CityGenerator {
     return this.buildingPositions;
   }
 
-  public getInstancedAttributes(): Array<Array<number>> {
-    return this.instancedAttributes;
+  public getCubeInstancedAttributes(): Array<Array<number>> {
+    return this.cubeInstancedAttributes;
+  }
+
+  public getHexInstancedAttributes(): Array<Array<number>> {
+    return this.cubeInstancedAttributes;
+  }
+
+  public getCubeTransformMats() : Array<mat4> {
+    return this.cubeTransformMats;
+  }
+
+  public getHexTransformMats() : Array<mat4> {
+    return this.hexTransformMats;
   }
 
   public getBuildingCount(): number {
     return this.buildingPositions.length;
   }
 
-
   public generateCity() {
     this.rasterizeWater();
     this.rasterizeRoads();
-    this.rasterizerTester();
-    //this.generateBuildingPoints();
-    //this.generateBuildings();
+    this.generateBuildingPoints();
+    /*for(let i = 0; i < this.buildingPositions.length; i++) {
+      this.renderCube(this.buildingPositions[i]);
+    }*/
+    this.generateBuildings();
   }
 }
 
@@ -415,7 +630,4 @@ export default class CityGenerator {
     
   }
 
-  private getBoundsOfRectangle(edges: Array<Edge>): Array<vec2> {
-    if()
-  }
 }*/

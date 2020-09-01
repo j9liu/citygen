@@ -16,6 +16,7 @@ in vec4 vs_Transform3; // Another instance rendering attribute; column 3 of tran
 in vec4 vs_Transform4; 
 in vec2 vs_UV; // Non-instanced, and presently unused in main(). Feel free to use it for your meshes.
 
+out vec4 fs_Nor;
 out vec4 fs_Col;
 
 void main()
@@ -23,5 +24,6 @@ void main()
     mat4 transform = mat4(vs_Transform1, vs_Transform2, vs_Transform3, vs_Transform4);
     gl_Position = u_ViewProj * u_3DProj * transform * vs_Pos;
 
+    fs_Nor = u_ViewProj * u_3DProj * transform * vs_Nor;
     fs_Col = vs_Col;
 }

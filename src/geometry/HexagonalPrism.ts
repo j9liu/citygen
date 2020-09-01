@@ -133,6 +133,12 @@ class HexagonalPrism extends Drawable {
     this.generateIdx();
     this.generatePos();
     this.generateNor();
+    this.generateCol();
+    this.generateTransform1();
+    this.generateTransform2();
+    this.generateTransform3();
+    this.generateTransform4();
+
 
     this.count = this.indices.length;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.bufIdx);
@@ -144,7 +150,7 @@ class HexagonalPrism extends Drawable {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bufPos);
     gl.bufferData(gl.ARRAY_BUFFER, this.positions, gl.STATIC_DRAW);
 
-    console.log(`Created hexagon`);
+    console.log(`Created hexagonal prism`);
   }
 
   setInstanceVBOs(col1: Float32Array, col2: Float32Array, col3: Float32Array, col4: Float32Array,

@@ -308,8 +308,8 @@ export default class RoadGenerator {
                                             0,
                                             midpoint[1]);
     
-    let scale : vec3 = vec3.fromValues(e.getLength(), 0.05, 1.4);
-    let color : vec4 = vec4.fromValues(80. / 255., 80. / 255., 80. / 255., 1.);
+    let scale : vec3 = vec3.fromValues(e.getLength(), 0.05, 1);
+    let color : vec4 = vec4.fromValues(80. / 255., 80. / 255., 80. / 255., 1.2);
     if(e.highway) {
       scale[2] = 3.;
       color = vec4.fromValues(25. / 255., 25. / 225., 25. / 255., 1.);

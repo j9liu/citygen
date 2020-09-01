@@ -41,7 +41,7 @@ let square: Square,
     rgCityHeight: number = 512, // the width will scale based on window's aspect ratio.
     rgGridHeight: number = 8,
     cgCityHeight: number = 512,
-    cgGridHeight: number = cgCityHeight / 2,
+    cgGridHeight: number = cgCityHeight,
     planeHeight: number = 17,
     aspectRatio: number = window.innerWidth / window.innerHeight,
     rgen: RoadGenerator,
@@ -74,6 +74,7 @@ function createMeshes() {
   square.create();
   screenQuad.create();
   hexagonalPrism.create();
+  hexagonalPrism.setInstanced(true);
   plane.create();
 }
 
@@ -109,7 +110,6 @@ function initializeGenerators() {
 }
 
 function generateRoads() {
-
   rgen.setUseMyStartPos(controls.lockStartPos);
   if(controls.lockStartPos) {
     rgen.startPos[0] = controls.startPositionX;
@@ -140,16 +140,15 @@ function generateCity() {
   cgen.reset();
   cgen.setRoads(rgen.getAllRoads());
   cgen.generateCity();
-  let points : Array<vec2> = cgen.getBuildingPositions();
 
-  let instances : Array<Array<number>> = cgen.getInstancedAttributes();
+  let cubeInstances : Array<Array<number>> = cgen.getCubeInstancedAttributes();
 
-  cube.setInstanceVBOs(new Float32Array(instances[0]),
-                           new Float32Array(instances[1]),
-                           new Float32Array(instances[2]),
-                           new Float32Array(instances[3]),
-                           new Float32Array(instances[4]));
-  cube.setNumInstances(cgen.getBuildingCount());
+  cube.setInstanceVBOs(new Float32Array(cubeInstances[0]),
+                           new Float32Array(cubeInstances[1]),
+                           new Float32Array(cubeInstances[2]),
+                           new Float32Array(cubeInstances[3]),
+                           new Float32Array(cubeInstances[4]));
+  cube.setNumInstances(cubeInstances[4].length / 4);
 }
 
 function loadScene() {
@@ -190,8 +189,8 @@ function main() {
   // Create shaders
 
   const road = new ShaderProgram([
-    new Shader(gl.VERTEX_SHADER, require('./shaders/instanced-vert.glsl')),
-    new Shader(gl.FRAGMENT_SHADER, require('./shaders/instanced-frag.glsl')),
+    new Shader(gl.VERTEX_SHADER, require('./shaders/road-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/road-frag.glsl')),
   ]);
 
   const building = new ShaderProgram([
@@ -206,6 +205,11 @@ function main() {
 
   terrain.setDimensions(aspectRatio * planeHeight, planeHeight);
   terrain.setWaterLevel(controls.waterLevel);
+
+  const lambert = new ShaderProgram([
+    new Shader(gl.VERTEX_SHADER, require('./shaders/lambert-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/lambert-frag.glsl')),
+  ]);
 
   const flat = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/flat-vert.glsl')),
@@ -288,7 +292,7 @@ function main() {
     renderer.clear();
     renderer.render(camera, terrain, [plane]);
     renderer.render(camera, road, [roadCube]);
-    renderer.render(camera, building, [cube]);
+    renderer.render(camera, building, [cube, hexagonalPrism]);
     stats.end();
 
     // Tell the browser to call `tick` again whenever it renders a new frame

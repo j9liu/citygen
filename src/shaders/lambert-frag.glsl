@@ -2,7 +2,8 @@
 precision highp float;
 
 uniform vec3 u_Eye, u_Ref, u_Up;
-const vec3 light_Vec = vec3(0.0, 2.0, 0.0);
+const vec3 light_Vec = vec3(-1.0, -1.0, 0.0);
+const vec3 light_Vec2 = vec3(1.0, 1.0, 0.0);
 
 in vec3 fs_Pos;
 in vec4 fs_Nor;
@@ -11,6 +12,7 @@ out vec4 out_Col;
 void main() {
 
 	vec4 albedo = vec4(1., 0., 0., 1.);
+//	vec4 albedo = vec4(0., 1., 0., 1.);
 	vec3 normal = fs_Nor.xyz;
 
 	float lambert = clamp(dot(normalize(normal), normalize(light_Vec)), 0.0, 1.0);
