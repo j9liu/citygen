@@ -3,15 +3,17 @@ import Drawable from '../rendering/gl/Drawable';
 import {gl} from '../globals';
 
 class HexagonalPrism extends Drawable {
+  center: vec4;
   indices: Uint32Array;
   positions: Float32Array;
   normals: Float32Array;
+  uvs: Float32Array;
   colors: Float32Array;
-  center: vec4;
   transcol1: Float32Array; // Data for bufTransform1
   transcol2: Float32Array; // Data for bufTransform2
   transcol3: Float32Array; // Data for bufTransform3
   transcol4: Float32Array; // Data for bufTransform4
+  floorTypes: Float32Array; // Influences procedural textures in the fragment shader.
 
   constructor(center: vec3) {
     super(); // Call the constructor of the super class. This is required.
@@ -83,62 +85,107 @@ class HexagonalPrism extends Drawable {
                                          0.25, 0.5, -0.25 * rt3, 1,  // bottomright point, top hexagon
                                          0.25, -0.5, -0.25 * rt3, 1, // bottomright point, bottom hexagon
                                           0.5, -0.5, 0, 1,           // rightmost point, bottom hexagon
-                                          0.5, 0.5, 0, 1,            // rightmost point, top hexagon
-                                     ]);
+                                          0.5, 0.5, 0, 1]);
 
-    this.normals = new Float32Array([ 0, 1, 0, 1,
-                                      0, 1, 0, 1,
-                                      0, 1, 0, 1,
-                                      0, 1, 0, 1,
-                                      0, 1, 0, 1,
-                                      0, 1, 0, 1,
+    this.normals = new Float32Array([ 0, 1, 0, 0,
+                                      0, 1, 0, 0,
+                                      0, 1, 0, 0,
+                                      0, 1, 0, 0,
+                                      0, 1, 0, 0,
+                                      0, 1, 0, 0,
 
-                                      0, -1, 0, 1,
-                                      0, -1, 0, 1,
-                                      0, -1, 0, 1,
-                                      0, -1, 0, 1,
-                                      0, -1, 0, 1,
-                                      0, -1, 0, 1,
+                                      0, -1, 0, 0,
+                                      0, -1, 0, 0,
+                                      0, -1, 0, 0,
+                                      0, -1, 0, 0,
+                                      0, -1, 0, 0,
+                                      0, -1, 0, 0,
 
-                                      0.5 * rt3, 0, 0.5, 1,
-                                      0.5 * rt3, 0, 0.5, 1,
-                                      0.5 * rt3, 0, 0.5, 1,
-                                      0.5 * rt3, 0, 0.5, 1,
+                                      0.5 * rt3, 0, 0.5, 0,
+                                      0.5 * rt3, 0, 0.5, 0,
+                                      0.5 * rt3, 0, 0.5, 0,
+                                      0.5 * rt3, 0, 0.5, 0,
 
-                                      0, 0, 1, 1,
-                                      0, 0, 1, 1,
-                                      0, 0, 1, 1,
-                                      0, 0, 1, 1,
+                                      0, 0, 1, 0,
+                                      0, 0, 1, 0,
+                                      0, 0, 1, 0,
+                                      0, 0, 1, 0,
 
-                                     -0.5 * rt3, 0, 0.5, 1,
-                                     -0.5 * rt3, 0, 0.5, 1,
-                                     -0.5 * rt3, 0, 0.5, 1,
-                                     -0.5 * rt3, 0, 0.5, 1,
+                                     -0.5 * rt3, 0, 0.5, 0,
+                                     -0.5 * rt3, 0, 0.5, 0,
+                                     -0.5 * rt3, 0, 0.5, 0,
+                                     -0.5 * rt3, 0, 0.5, 0,
 
-                                     -0.5 * rt3, 0, -0.5, 1,
-                                     -0.5 * rt3, 0, -0.5, 1,
-                                     -0.5 * rt3, 0, -0.5, 1,
-                                     -0.5 * rt3, 0, -0.5, 1,
+                                     -0.5 * rt3, 0, -0.5, 0,
+                                     -0.5 * rt3, 0, -0.5, 0,
+                                     -0.5 * rt3, 0, -0.5, 0,
+                                     -0.5 * rt3, 0, -0.5, 0,
 
-                                      0, 0, -1, 1,
-                                      0, 0, -1, 1,
-                                      0, 0, -1, 1,
-                                      0, 0, -1, 1,
+                                      0, 0, -1, 0,
+                                      0, 0, -1, 0,
+                                      0, 0, -1, 0,
+                                      0, 0, -1, 0,
 
-                                      0.5 * rt3, 0, -0.5, 1,
-                                      0.5 * rt3, 0, -0.5, 1,
-                                      0.5 * rt3, 0, -0.5, 1,
-                                      0.5 * rt3, 0, -0.5, 1]);
+                                      0.5 * rt3, 0, -0.5, 0,
+                                      0.5 * rt3, 0, -0.5, 0,
+                                      0.5 * rt3, 0, -0.5, 0,
+                                      0.5 * rt3, 0, -0.5, 0]);
+
+    this.uvs = new Float32Array([1.0, 0.5,
+                                 0.75, 0.25 * rt3 + 0.5,
+                                 -0.75, 0.25 * rt3 + 0.5,
+                                 -1.0, 0.5,
+                                 -0.75, -0.25 * rt3 - 0.5,
+                                 0.75, -0.25 * rt3 - 0.5,
+
+                                 -1.0, 0.5,
+                                 -0.75, -0.25 * rt3 - 0.5,
+                                 0.75, -0.25 * rt3 - 0.5,
+                                 1.0, 0.5,
+                                 0.75, 0.25 * rt3 + 0.5,
+                                 -0.75, 0.25 * rt3 + 0.5,
+
+                                 0, 1,
+                                 0, 0,
+                                 1, 0,
+                                 1, 1,
+
+                                 0, 1,
+                                 0, 0,
+                                 1, 0,
+                                 1, 1,
+
+                                 0, 1,
+                                 0, 0,
+                                 1, 0,
+                                 1, 1,
+
+                                 0, 1,
+                                 0, 0,
+                                 1, 0,
+                                 1, 1,
+
+                                 0, 1,
+                                 0, 0,
+                                 1, 0,
+                                 1, 1,
+
+                                 0, 1,
+                                 0, 0,
+                                 1, 0,
+                                 1, 1
+                                 ]);
 
     this.generateIdx();
     this.generatePos();
     this.generateNor();
     this.generateCol();
+    this.generateUV();
     this.generateTransform1();
     this.generateTransform2();
     this.generateTransform3();
     this.generateTransform4();
-
+    this.generateFloorType();
 
     this.count = this.indices.length;
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.bufIdx);
@@ -149,6 +196,9 @@ class HexagonalPrism extends Drawable {
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bufPos);
     gl.bufferData(gl.ARRAY_BUFFER, this.positions, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.bufUV);
+    gl.bufferData(gl.ARRAY_BUFFER, this.uvs, gl.STATIC_DRAW);
 
     console.log(`Created hexagonal prism`);
   }
@@ -175,6 +225,30 @@ class HexagonalPrism extends Drawable {
  
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bufTransform4);
     gl.bufferData(gl.ARRAY_BUFFER, this.transcol4, gl.STATIC_DRAW);
+  }
+
+  setInstanceVBOsForBuildings(col1: Float32Array, col2: Float32Array, col3: Float32Array, col4: Float32Array,
+                  fts: Float32Array) {
+    this.transcol1 = col1;
+    this.transcol2 = col2;
+    this.transcol3 = col3;
+    this.transcol4 = col4;
+    this.floorTypes = fts;
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.bufTransform1);
+    gl.bufferData(gl.ARRAY_BUFFER, this.transcol1, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.bufTransform2);
+    gl.bufferData(gl.ARRAY_BUFFER, this.transcol2, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.bufTransform3);
+    gl.bufferData(gl.ARRAY_BUFFER, this.transcol3, gl.STATIC_DRAW);
+ 
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.bufTransform4);
+    gl.bufferData(gl.ARRAY_BUFFER, this.transcol4, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.bufFloorType);
+    gl.bufferData(gl.ARRAY_BUFFER, this.floorTypes, gl.STATIC_DRAW);
   }
 };
 

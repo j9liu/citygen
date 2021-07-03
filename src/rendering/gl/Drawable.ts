@@ -12,6 +12,7 @@ abstract class Drawable {
   bufTransform4: WebGLBuffer;
   bufCol: WebGLBuffer;
   bufUV: WebGLBuffer;
+  bufFloorType: WebGLBuffer;
 
   idxGenerated: boolean = false;
   posGenerated: boolean = false;
@@ -22,6 +23,7 @@ abstract class Drawable {
   transform3Generated: boolean = false;
   transform4Generated: boolean = false;
   uvGenerated: boolean = false;
+  floorTypeGenerated: boolean = false;
 
   instanced: boolean = false; // Set true if this geometry is meant to be instanced.
   numInstances: number = 0; // How many instances of this Drawable the shader program should draw
@@ -38,6 +40,7 @@ abstract class Drawable {
     gl.deleteBuffer(this.bufTransform3);
     gl.deleteBuffer(this.bufTransform4);
     gl.deleteBuffer(this.bufUV);
+    gl.deleteBuffer(this.bufFloorType);
   }
 
   generateIdx() {
@@ -83,6 +86,11 @@ abstract class Drawable {
   generateUV() {
     this.uvGenerated = true;
     this.bufUV = gl.createBuffer();
+  }
+
+  generateFloorType() {
+    this.floorTypeGenerated = true;
+    this.bufFloorType = gl.createBuffer();
   }
 
   bindIdx(): boolean {
@@ -141,12 +149,18 @@ abstract class Drawable {
     return this.transform4Generated;
   }
 
-
   bindUV(): boolean {
     if (this.uvGenerated) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.bufUV);
     }
     return this.uvGenerated;
+  }
+
+  bindFloorType(): boolean {
+    if(this.floorTypeGenerated) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.bufFloorType);
+    }
+    return this.floorTypeGenerated;
   }
 
   elemCount(): number {

@@ -29,6 +29,7 @@ class ShaderProgram {
   attrTransform3: number;
   attrTransform4: number;
   attrUV: number;
+  attrFloorType: number;
 
   unifModel: WebGLUniformLocation;
   unifModelInvTr: WebGLUniformLocation;
@@ -44,6 +45,8 @@ class ShaderProgram {
   unifShowElevation: WebGLUniformLocation;
   unifShowPopulation: WebGLUniformLocation;
   unifWaterLevel: WebGLUniformLocation;
+  unifLightDirections: WebGLUniformLocation;
+  unifLightColors: WebGLUniformLocation;
 
   constructor(shaders: Array<Shader>) {
     this.prog = gl.createProgram();
@@ -64,6 +67,7 @@ class ShaderProgram {
     this.attrTransform3 = gl.getAttribLocation(this.prog, "vs_Transform3");
     this.attrTransform4 = gl.getAttribLocation(this.prog, "vs_Transform4");
     this.attrUV         = gl.getAttribLocation(this.prog, "vs_UV");
+    this.attrFloorType  = gl.getAttribLocation(this.prog, "vs_FloorType");
 
     this.unifModel            = gl.getUniformLocation(this.prog, "u_Model");
     this.unifModelInvTr       = gl.getUniformLocation(this.prog, "u_ModelInvTr");
@@ -79,6 +83,9 @@ class ShaderProgram {
     this.unifShowElevation    = gl.getUniformLocation(this.prog, "u_ShowElevation");
     this.unifShowPopulation   = gl.getUniformLocation(this.prog, "u_ShowPopulation");
     this.unifWaterLevel       = gl.getUniformLocation(this.prog, "u_WaterLevel");
+    this.unifLightDirections   = gl.getUniformLocation(this.prog, "u_LightDirections");
+    this.unifLightColors      = gl.getUniformLocation(this.prog, "u_LightColors");
+
   }
 
   use() {
@@ -178,6 +185,26 @@ class ShaderProgram {
     }
   }
 
+  setLightData(lightDir: Array<vec3>, lightCol: Array<vec3>) {
+    this.use();
+    let lightDirFloats : Array<number> = [],
+        lightColFloats : Array<number> = [];
+    for(let i = 0; i < lightDir.length; i++) {
+      for(let j = 0; j < 3; j++) {
+        lightDirFloats.push(lightDir[i][j]);
+        lightColFloats.push(lightCol[i][j]);
+      }
+    }
+
+    if (this.unifLightDirections !== -1 ) {
+      gl.uniform3fv(this.unifLightDirections, lightDirFloats);
+    }
+
+    if (this.unifLightColors !== -1 ) {
+      gl.uniform3fv(this.unifLightColors, lightColFloats);
+    }
+  }
+
   draw(d: Drawable) {
     this.use();
 
@@ -191,6 +218,12 @@ class ShaderProgram {
       gl.enableVertexAttribArray(this.attrNor);
       gl.vertexAttribPointer(this.attrNor, 4, gl.FLOAT, false, 0, 0);
       gl.vertexAttribDivisor(this.attrNor, 0); // Advance 1 index in nor VBO for each vertex
+    }
+
+    if (this.attrUV != -1 && d.bindUV()) {
+      gl.enableVertexAttribArray(this.attrUV);
+      gl.vertexAttribPointer(this.attrUV, 2, gl.FLOAT, false, 0, 0);
+      gl.vertexAttribDivisor(this.attrUV, 0); // Advance 1 index in pos VBO for each vertex
     }
 
     if (this.attrCol != -1 && d.bindCol()) {
@@ -223,10 +256,10 @@ class ShaderProgram {
       gl.vertexAttribDivisor(this.attrTransform4, 1); // Advance 1 index in translate VBO for each drawn instance
     }
 
-    if (this.attrUV != -1 && d.bindUV()) {
-      gl.enableVertexAttribArray(this.attrUV);
-      gl.vertexAttribPointer(this.attrUV, 2, gl.FLOAT, false, 0, 0);
-      gl.vertexAttribDivisor(this.attrUV, 0); // Advance 1 index in pos VBO for each vertex
+    if (this.attrFloorType != -1 && d.bindFloorType()) {
+      gl.enableVertexAttribArray(this.attrFloorType);
+      gl.vertexAttribPointer(this.attrFloorType, 1, gl.FLOAT, false, 0, 0);
+      gl.vertexAttribDivisor(this.attrFloorType, 1);
     }
 
     d.bindIdx();
@@ -255,6 +288,7 @@ class ShaderProgram {
     if (this.attrTransform3 != -1) gl.disableVertexAttribArray(this.attrTransform3);
     if (this.attrTransform3 != -1) gl.disableVertexAttribArray(this.attrTransform4);
     if (this.attrUV != -1) gl.disableVertexAttribArray(this.attrUV);
+    if (this.attrFloorType != -1) gl.disableVertexAttribArray(this.attrFloorType);
   }
 };
 

@@ -21,9 +21,9 @@ const controls = {
   displayElevation: false,
   displayPopDensity: true,
   waterLevel: 0.5,
-  startPositionX: 73.4075,
-  startPositionY: 22.76785,
-  lockStartPos: false,
+  startPositionX: 999.9837036132812,
+  startPositionY: 490.7914733886719,
+  lockStartPos: true,
   useRandomness: true,
   maxIterations: 20,
   globalGridAngle: 22.5,
@@ -46,7 +46,9 @@ let square: Square,
     aspectRatio: number = window.innerWidth / window.innerHeight,
     rgen: RoadGenerator,
     cgen: CityGenerator,
-    projectionMatrix: mat4;
+    projectionMatrix: mat4,
+    lightDirections: Array<vec3> = [],
+    lightColors: Array<vec3> = [];
 
 
 //////////////////////
@@ -67,15 +69,17 @@ function createMeshes() {
   hexagonalPrism = new HexagonalPrism(vec3.fromValues(0, 0, 0));
   plane = new Plane(vec3.fromValues(0,0,0),
                     vec2.fromValues(aspectRatio * planeHeight, planeHeight), 12);
-  cube.create();
-  cube.setInstanced(true);
-  roadCube.create();
-  roadCube.setInstanced(true);
+
   square.create();
   screenQuad.create();
+  cube.create();
+  roadCube.create();
   hexagonalPrism.create();
-  hexagonalPrism.setInstanced(true);
   plane.create();
+
+  cube.setInstanced(true);
+  roadCube.setInstanced(true);
+  hexagonalPrism.setInstanced(true);
 }
 
 function initializeGenerators() {
@@ -141,14 +145,26 @@ function generateCity() {
   cgen.setRoads(rgen.getAllRoads());
   cgen.generateCity();
 
-  let cubeInstances : Array<Array<number>> = cgen.getCubeInstancedAttributes();
+  let cubeTransformInstances : Array<Array<number>> = cgen.getCubeInstancedTransforms();
+  let hexTransformInstances  : Array<Array<number>> = cgen.getHexInstancedTransforms();
 
-  cube.setInstanceVBOs(new Float32Array(cubeInstances[0]),
-                           new Float32Array(cubeInstances[1]),
-                           new Float32Array(cubeInstances[2]),
-                           new Float32Array(cubeInstances[3]),
-                           new Float32Array(cubeInstances[4]));
-  cube.setNumInstances(cubeInstances[4].length / 4);
+  let cubeFloorTypeInstances : Array<number> = cgen.getCubeInstancedFloorTypes();
+  let hexFloorTypeInstances  : Array<number> = cgen.getHexInstancedFloorTypes();
+
+  cube.setInstanceVBOsForBuildings(new Float32Array(cubeTransformInstances[0]),
+                       new Float32Array(cubeTransformInstances[1]),
+                       new Float32Array(cubeTransformInstances[2]),
+                       new Float32Array(cubeTransformInstances[3]),
+                       new Float32Array(cubeFloorTypeInstances));
+  cube.setNumInstances(cubeFloorTypeInstances.length);
+
+  hexagonalPrism.setInstanceVBOsForBuildings(new Float32Array(hexTransformInstances[0]),
+                                 new Float32Array(hexTransformInstances[1]),
+                                 new Float32Array(hexTransformInstances[2]),
+                                 new Float32Array(hexTransformInstances[3]),
+                                 new Float32Array(hexFloorTypeInstances));
+  hexagonalPrism.setNumInstances(hexFloorTypeInstances.length);
+
 }
 
 function loadScene() {
@@ -187,7 +203,6 @@ function main() {
   renderer.setClearColor(0.2, 0.2, 0.2, 1);
 
   // Create shaders
-
   const road = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/road-vert.glsl')),
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/road-frag.glsl')),
@@ -206,11 +221,6 @@ function main() {
   terrain.setDimensions(aspectRatio * planeHeight, planeHeight);
   terrain.setWaterLevel(controls.waterLevel);
 
-  const lambert = new ShaderProgram([
-    new Shader(gl.VERTEX_SHADER, require('./shaders/lambert-vert.glsl')),
-    new Shader(gl.FRAGMENT_SHADER, require('./shaders/lambert-frag.glsl')),
-  ]);
-
   const flat = new ShaderProgram([
     new Shader(gl.VERTEX_SHADER, require('./shaders/flat-vert.glsl')),
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/flat-frag.glsl')),
@@ -221,7 +231,16 @@ function main() {
     new Shader(gl.FRAGMENT_SHADER, require('./shaders/data-frag.glsl')),
   ]);
 
-  //testCityGenerator();
+  // Create light data and send it to shaders
+  lightDirections = [vec3.fromValues(1.0, 0.0, 0.0),
+                     vec3.fromValues(-1.0, 0.5, 0.5),
+                     vec3.fromValues(0.0, 0.0, -1.0) ];
+  lightColors = [vec3.fromValues(1.0, 1.0, 1.0),
+               vec3.fromValues(1.0, 1.0, 1.0),
+               vec3.fromValues(1.0, 1.0, 1.0)];
+
+  building.setLightData(lightDirections, lightColors);
+  terrain.setLightData(lightDirections, lightColors);
 
   // Create and bind the texture
   const t_width = window.innerWidth;
@@ -288,8 +307,10 @@ function main() {
     camera.update();
     stats.begin();
     flat.setTime(time++);
+    building.setTime(time++);
     gl.viewport(0, 0, window.innerWidth, window.innerHeight);
     renderer.clear();
+    //renderer.render(camera, flat, [screenQuad]);
     renderer.render(camera, terrain, [plane]);
     renderer.render(camera, road, [roadCube]);
     renderer.render(camera, building, [cube, hexagonalPrism]);

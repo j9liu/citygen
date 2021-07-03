@@ -3,13 +3,11 @@ precision highp float;
 
 uniform vec3 u_Eye, u_Ref, u_Up;
 uniform vec2 u_Dimensions; // We use this to refer to the scale of the plane
-uniform float u_Time;
 
-uniform float u_ShowElevation;  // True if > 0
-uniform float u_ShowPopulation; // True if > 0
+uniform vec3 u_LightDirections[3];
+uniform vec3 u_LightColors[3];
+
 uniform float u_WaterLevel;
-
-const vec3 light_Vec = vec3(0.0, 2.0, 0.0);
 
 in vec3 fs_Pos;
 in vec4 fs_Nor;
@@ -58,6 +56,17 @@ float fbm2(vec2 p) {
 	return total;
 }
 
+float perturbedFbm(vec2 p)
+  {
+      vec2 q = vec2( fbm2( p + vec2(0.0,0.0) ),
+                     fbm2( p + vec2(5.2,1.3) ) );
+
+      vec2 r = vec2( fbm2( p + 4.0*q + vec2(9.7,9.2) ),
+                     fbm2( p + 4.0*q + vec2(8.3,2.8) ) );
+
+      return fbm2( p + 4.0*r );
+  }
+
 #define cell_size 2.f
 
 vec2 generate_point(vec2 cell) {
@@ -102,39 +111,27 @@ void main() {
 	// Land vs. Water Graph
 	float height = pow(fbm2(2.f * coordinates + vec2(1., -0.4)), 5.);
 	if(height < u_WaterLevel) {
- 		out_Col = vec4(vec3(66., 134., 244.) / 255., 1.);
-  	} else {
-  		out_Col = vec4(1.);
-  	}
-	
-	// Show elevation
-	if(u_ShowElevation + 1. > 0.) {
-		if(height < u_WaterLevel) {
-	 		out_Col = vec4(mix(vec3(66., 134., 244.) / 255., vec3(34., 184., 201.) / 255.,
+ 		out_Col = vec4(mix(vec3(66., 134., 244.) / 255., vec3(34., 184., 201.) / 255.,
 	 					   height + worleyNoise(coordinates)), 1.);
-		} else if (height < 0.8) {
-			out_Col = vec4(vec3(132., 58., 84.) / 255., 1.);
-		} else if (height < 1.4) {
-			out_Col = vec4(vec3(181., 130., 141.) / 255., 1.);
-		} else if (height < 4.7) {
-			out_Col = vec4(vec3(239., 225., 230.) / 255., 1.);
-		} else {
-			out_Col = vec4(1.);
-		}
-	}
+  	} else if(height < u_WaterLevel + 0.05) {
+  		out_Col = vec4(0.1, 0.1, 0.1, 1.0);
+  	} else {
+  		float heightRange = 4.7 - u_WaterLevel;
+  		vec3 dullGreen = vec3(44., 112., 71.) / 255.;
+  		vec3 lowCol = vec3(191., 235., 122.) / 255.;
+  		vec3 greyPurple = vec3(97., 91., 107.) / 255.;
+  		vec3 darkPurple = vec3(44., 24., 54.) / 255.;
+  		vec3 purple = vec3(89., 63., 102.) / 255.;
+  		vec3 almostBlack = vec3(0.1);
 
-	// Show population density
-	if(u_ShowPopulation > 0. && height >= u_WaterLevel) {
-		float population = pow(1. - worleyNoise(coordinates) * fbm2(2. * coordinates + vec2(0.3, 7.0)), 2.);
-		if(population < 0.2) {
-			out_Col = vec4(mix(out_Col.xyz, vec3(235., 242., 99.) / 255., 0.1), 1.);
-		} else if(population < 0.5) {
-			out_Col = vec4(mix(out_Col.xyz, vec3(235., 242., 99.) / 255., 0.4), 1.);
-		} else if(population < 0.8) {
-			out_Col = vec4(mix(out_Col.xyz, vec3(130., 232., 67.) / 255., 0.5), 1.);
-		} else {
-			out_Col = vec4(mix(out_Col.xyz, vec3(22., 158., 62.) / 255., 0.5), 1.);
-		}
-	}
+  		float noise = pow(perturbedFbm(coordinates * 10.0), 3.0);
+  		if(noise < 3.0) {
+  			noise = smoothstep(0.0, 3.0, noise);
+  		}
+  		vec3 noiseCol = mix(almostBlack, greyPurple, noise);
+  		noiseCol = mix(purple, noiseCol, fbm2(noiseCol.xz));
+  		vec3 finalCol = darkPurple * 0.4 + dullGreen * 0.2 + 0.4 * noiseCol;
+  		out_Col = vec4(finalCol, 1.);
+  	}
 	
 }

@@ -104,10 +104,11 @@ void main()
 	coordinates *= 2.;
 
 	float height = pow(fbm2(2.f * coordinates + vec2(1.f, -0.4f)), 5.f);
-	if(height > u_WaterLevel) {
-		float interpolatedH = smoothstep(0., 1., height - u_WaterLevel);
-		interpolatedH /= 1.6;
+	if(height > u_WaterLevel - 0.2 && height < u_WaterLevel + 0.2) {
+		float interpolatedH = smoothstep(0., 0.5, height - u_WaterLevel);
 		modelposition.y += interpolatedH;
+	} else if (height >= u_WaterLevel + 0.2) {
+		modelposition.y += 0.6;
 	}
 
   	gl_Position = u_ViewProj * modelposition;

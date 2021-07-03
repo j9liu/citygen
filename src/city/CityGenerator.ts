@@ -27,7 +27,9 @@ export default class CityGenerator {
   private highwayWidth: number = 3;
   private streetWidth: number = 1.2;
 
-  private numBuildingsGoal: number = 250;
+  private numBuildingsGoal: number = 300;
+  private buildingScale = 0.5;
+  private buildingRadius: number = 5;
   private buildingPositions: Array<vec2>;
   private cubeTransformMats: Array<mat4>;
   private hexTransformMats: Array<mat4>;
@@ -37,10 +39,13 @@ export default class CityGenerator {
   private referenceCube : Cube = new Cube(vec3.fromValues(0, 0, 0));
   private referenceHexPrism : HexagonalPrism = new HexagonalPrism(vec3.fromValues(0, 0, 0));
 
-  // The first four arrays represent the columns of the 
-  // transform matrix; the last one corresponds to the colors.
-  private cubeInstancedAttributes : Array<Array<number>>;
-  private hexInstancedAttributes : Array<Array<number>>;
+  // These four arrays represent the columns of the transform matrix.
+  private cubeInstancedTransforms : Array<Array<number>>;
+  private hexInstancedTransforms : Array<Array<number>>;
+
+  // This tracks what floor type (and thus what texture) is assigned to the shape.
+  private cubeInstancedFloorTypes : Array<number>;
+  private hexInstancedFloorTypes : Array<number>;
 
   // Pixel data that is rendered in the frame buffer
   // and passed into the generator.
@@ -106,12 +111,15 @@ export default class CityGenerator {
     this.cubeTransformMats = [];
     this.hexTransformMats = [];
 
-    this.cubeInstancedAttributes = [];
-    this.hexInstancedAttributes = [];
+    this.cubeInstancedTransforms = [];
+    this.hexInstancedTransforms = [];
 
-    for(let i = 0; i < 5; i++) {
-      this.cubeInstancedAttributes.push([]);
-      this.hexInstancedAttributes.push([]);
+    this.cubeInstancedFloorTypes = [];
+    this.hexInstancedFloorTypes = [];
+
+    for(let i = 0; i < 4; i++) {
+      this.cubeInstancedTransforms.push([]);
+      this.hexInstancedTransforms.push([]);
     }
   }
 
@@ -269,9 +277,9 @@ export default class CityGenerator {
       let pos : vec2 = this.buildingPositions[i];
       let pos3D : vec3 = vec3.fromValues(pos[0], 2, pos[1]);
       let scale : vec3 = vec3.fromValues(this.cellWidth, 0.3, this.cellWidth);
-      let color : vec4 = vec4.fromValues(1, 0, 0, 1);
+      let color : number = -2.0;
       if(this.validCells[i] > 0) {
-        color = vec4.fromValues(0, 1, 0, 1);
+        color = -1.0;
       }
 
       let transform :    mat4 = mat4.create(),
@@ -284,25 +292,51 @@ export default class CityGenerator {
       mat4.multiply(transform, translateMat, scaleMat);
 
       for(let j = 0; j < 4; j++) {
-        this.cubeInstancedAttributes[0].push(transform[j]);
-        this.cubeInstancedAttributes[1].push(transform[4 + j]);
-        this.cubeInstancedAttributes[2].push(transform[8 + j]);
-        this.cubeInstancedAttributes[3].push(transform[12 + j]);
+        this.cubeInstancedTransforms[0].push(transform[j]);
+        this.cubeInstancedTransforms[1].push(transform[4 + j]);
+        this.cubeInstancedTransforms[2].push(transform[8 + j]);
+        this.cubeInstancedTransforms[3].push(transform[12 + j]);
       }
 
-      for(let j = 0; j < 4; j++) {
-        this.cubeInstancedAttributes[4].push(color[j]);
-      }
+      this.cubeInstancedFloorTypes.push(color);
     }
   }
 
-  ///////////////////////////////////////
+  // strictly for the rasterizer tester
+  private renderCube(pos: vec2) {
+    let pos3D : vec3 = vec3.fromValues(pos[0], 0, pos[1]);
+    let scale : vec3 = vec3.fromValues(3, 1, 3);
 
-  public generateBuildingPoints() {
+    let color : number = -2.0;
+
+    let transform :    mat4 = mat4.create(),
+        scaleMat :     mat4 = mat4.create(),
+        rotateMat :    mat4 = mat4.create(),
+        translateMat : mat4 = mat4.create();
+
+    mat4.fromScaling(scaleMat, scale);
+    mat4.fromTranslation(translateMat, pos3D);
+    mat4.multiply(transform, translateMat, scaleMat);
+
+    for(let j = 0; j < 4; j++) {
+      this.cubeInstancedTransforms[0].push(transform[j]);
+      this.cubeInstancedTransforms[1].push(transform[4 + j]);
+      this.cubeInstancedTransforms[2].push(transform[8 + j]);
+      this.cubeInstancedTransforms[3].push(transform[12 + j]);
+      }
+
+    this.cubeInstancedFloorTypes.push(color);
+  }
+
+  //////////////////////////////////////
+  // POINT GENERATION FOR BUILDINGS
+  //////////////////////////////////////
+
+  public generateBuildingPositions() {
     this.buildingPositions = [];
     let numBuildings : number = 0;
     let badLoopCap : number = 0;
-    while(numBuildings < 1) {
+    while(numBuildings < this.numBuildingsGoal) {
       let position : vec2 = vec2.fromValues(Math.random() * this.citySize[0],
                                             Math.random() * this.citySize[1]);
       let cell : number = this.getPosCellNumber(position);
@@ -310,7 +344,7 @@ export default class CityGenerator {
         // Test for nearby roads in a 5 x 5 space. If there
         // are enough roads filling the space around the point,
         // then place the point.
-        let threshold : number = 0.2;
+        let threshold : number = 0.15;
         let xy : vec2 = this.getXYFromCellNumber(cell);
         let totalRoadCells : number = 0;
         for(let i = xy[1] - 2; i <= xy[1] + 2; i++) {
@@ -321,11 +355,15 @@ export default class CityGenerator {
           }
         }
 
-        if(totalRoadCells / 25 > threshold) {
+        if(totalRoadCells / 25.0 >= threshold) {
          this.buildingPositions.push(position);
           numBuildings++;
           badLoopCap = 0;
-          this.validCells[cell] = 3;
+          for(let i = xy[1] - Math.floor(this.buildingRadius / 2); i <= xy[1] + Math.ceil(this.buildingRadius / 2); i++) {
+            for(let j = xy[0] - Math.floor(this.buildingRadius / 2); j <= xy[0] + Math.ceil(this.buildingRadius / 2); j++) {
+              this.validCells[this.getCellNumberFromXY(j, i)] = 3;
+            }
+          }
         } else {
           badLoopCap++;
         }
@@ -333,10 +371,21 @@ export default class CityGenerator {
         badLoopCap++;
       }
 
-      if(badLoopCap >= this.numBuildingsGoal / 4) {
+      if(badLoopCap >= 100) {
         break;
       }
     }
+  }
+
+  //////////////////////////////////////
+  // BUILDING GENERATION HELPER FUNCTIONS
+  ////////////////////////////////////// 
+
+  private random2D(p: vec2, seed: vec2) : number {
+    let p2 = vec2.fromValues(p[0] * p[0], p[1] * 1.5);
+    let dot : number = vec2.dot(p, seed);
+    let sin : number = Math.sin(dot);
+    return sin - Math.floor(sin);
   }
 
   private isCube(obj: Drawable): obj is Cube {
@@ -373,11 +422,13 @@ export default class CityGenerator {
 
   private getRandomPointOfFloorPlan(fpShapes: Array<number>,
                                     fpTransformations: Array<mat4>) : vec3 {
+    // Choose one of the floor plan shapes at random.
     let fpIndex : number = Math.floor(Math.random() * fpShapes.length);
     let chosenShape : number = fpShapes[fpIndex];
 
-    let chosenIndex : number = -1;
+    // Choose one of the bottom indices of the floor plan shape. 
     // These are directly drawn from the positions array in either class.
+    let chosenIndex : number = -1;
     let bottomCubeIndices : Array<number> = [16, 17, 18, 19];
     let bottomHexIndices : Array<number>  = [6, 7, 8, 9, 10, 11];
 
@@ -398,141 +449,324 @@ export default class CityGenerator {
     return vec3.fromValues(transformedPos[0], transformedPos[1], transformedPos[2]);
   }
 
+  private getRandomSideOfCube() : vec2 {
+    let bottomCubeIndices : Array<number> = [16, 17, 18, 19];
+    let result : vec2 = vec2.create();
+    let side : number = Math.ceil(Math.random() * 4);
+    let index1 : number,
+        index2 : number;
+    switch(side) {
+      case 1:
+        index1 = 16;
+        index2 = 17;
+        break;
+      case 2:
+        index1 = 17;
+        index2 = 18;
+        break;
+      case 3:
+        index1 = 18;
+        index2 = 19;
+        break;
+      case 4:
+        index1 = 19;
+        index2 = 16;
+    }
+
+    let point1 : vec4 = this.getVec4PositionAtIndexFromShape(this.referenceCube, index1),
+        point2 : vec4 = this.getVec4PositionAtIndexFromShape(this.referenceCube, index2);
+
+    let p1 : vec2 = vec2.fromValues(point1[0], point1[2]),
+        p2 : vec2 = vec2.fromValues(point2[0], point2[2]);
+
+    vec2.add(result, p1, p2);
+    vec2.scale(result, result, 0.5);
+
+    return result;
+  }
+  
+  //////////////////////////////////////
+  // BUILDING GENERATION
+  /////////////////////////////////////
+
+  private getFloorScale(shape: number,
+                        buildingType: number, 
+                        maxBuildingHeight: number) : vec2 {
+    let result : vec2 = vec2.create();
+    if(buildingType >= 10) {
+      result = vec2.fromValues(15, 15);
+    } else if(shape == 6) {
+      result = vec2.fromValues(maxBuildingHeight * (2 + Math.random() * 3),
+                               maxBuildingHeight * (2 + Math.random() * 3));
+    } else {
+      result = vec2.fromValues(maxBuildingHeight * (1 + Math.random() * 2),
+                               maxBuildingHeight * (1 + Math.random() * 2));
+    }
+    return result;
+  }
+
   private generateBuildings() {
     this.referenceCube.create();
     this.referenceHexPrism.create();
-
     for(let p of this.buildingPositions) {
       let pop : number = this.getPopulation(p);
       let floorPlanShapes : Array<number> = [];
       let floorPlanLocalTransformations : Array<mat4> = [];
 
-      let maxFloors : number = 3;
-      //let maxBuildingHeight: number = pop / 255;
-      let maxBuildingHeight = 10;
-      let height: number = maxBuildingHeight;
-      let minFloorHeight: number = 1;
-      let maxFloorHeight: number = maxBuildingHeight / maxFloors;
-/*
-      if(pop > 0.6 * 255) {
+      // The first array corresponds to the shapes in the floor plan.
+      // The second case corresponds to the floors in the entire building.
+      // These keep track of which shapes and / or floors are different
+      // from the others for aesthetic purposes, such as colored columns
+      // or different floors.
+      // In general, 0 is assigned to non-special floors or shapes,
+      // while 1+ is used to designate specific textures depending
+      // on the building type.
+      let floorPlanSpecialCases : Array<Array<number>> = [[], []];
 
-      } else if (pop > 0.25 * 255) {
+      // This keeps track of how MANY of each special shape / floor there is,
+      // while the other array keeps track of the order.
+      // This could be constructed every time in the floor type function
+      // but this is so low memory that it's easier to track it here.
+      let floorPlanSpecialCasesCount : Array<Array<number>> = [[], []];
 
-      } else {
+      let lastYOffset = 0;
+      let maxFloors : number = 8;
+      let currFloors : number = 1;
+      let maxBuildingHeight : number = 10;
+      let buildingType : number = 1;
+      floorPlanSpecialCasesCount = [[], [0, 0]];
 
-      }*/
-
-      while(height > 0) {
-        /*let shape : string;
+      if(pop > 0.8 * 255) {
+        maxBuildingHeight = pop / 40;
         if(Math.random() > 0.5) {
-          shape = "hexagonal prism";
-        } else {
-          shape = "cube";
-        }*/
+          buildingType = 2;
+          floorPlanSpecialCasesCount = [[0, 0], []];
+        }
+      } else if(pop > 0.6 * 255) {
+        maxBuildingHeight = 4;
+      } else {
+        maxBuildingHeight = 0.6 + Math.random() * 0.4;
+        maxFloors = 2;
+        buildingType = 10;
+      }
 
-        let floorHeight  : number = (maxFloorHeight - minFloorHeight) * Math.random() + minFloorHeight;
+      let currHeight : number = maxBuildingHeight;
+      let minFloorHeight : number = Math.min(0.75, Math.max(maxBuildingHeight / (2 * maxFloors), 0.25));
+      //let maxFloorHeight: number = Math.max(2 * maxBuildingHeight / maxFloors, minFloorHeight);
+      let maxFloorHeight : number = Math.max(maxBuildingHeight / maxFloors + minFloorHeight / 2, minFloorHeight);
 
-        if(height < 2 * minFloorHeight || height - floorHeight < minFloorHeight) {
-          floorHeight = height;
+      let lastFloor : boolean = false;
+      while(currHeight > 0) {
+        // Choose a floor shape to use.
+        let shape : number = this.random2D(p, vec2.fromValues(currFloors, currFloors)) >= 0.5 ? 4 : 6;
+        if(buildingType >= 10) {
+          shape = 4;
         }
 
+        // Determine the height of the current floor. 
+        let floorHeight  : number = minFloorHeight;
+        floorHeight += (maxFloorHeight - minFloorHeight) * Math.random();
+        if(currHeight < 2 * minFloorHeight || currHeight - floorHeight < minFloorHeight || currFloors == maxFloors) {
+          floorHeight = currHeight;
+        }
+
+        // Create the transformation matrices for the shapes of this floor.
         let transformMat : mat4 = mat4.create(),
             translateMat : mat4 = mat4.create(),
             rotateMat    : mat4 = mat4.create(),
             scaleMat     : mat4 = mat4.create();
 
+        let yOffset : number = 0;
+
         if(floorPlanShapes.length > 0) {
           let newShapeMidpoint : vec3 = this.getRandomPointOfFloorPlan(floorPlanShapes, floorPlanLocalTransformations);
-          newShapeMidpoint[1] += floorHeight / 2;
+          newShapeMidpoint[1] += 0.5;
           mat4.fromTranslation(translateMat, newShapeMidpoint)
+          yOffset = lastYOffset - floorHeight;
         } else {
-          mat4.fromTranslation(translateMat, vec3.fromValues(0, floorHeight / 2, 0));
+          mat4.fromTranslation(translateMat, vec3.fromValues(0, 0, 0));
+          yOffset = currHeight - floorHeight;
         }
 
-        let angle : number = Math.random() * 45 * Math.PI / 180;
+        let angle : number = Math.random() * (45 * Math.PI / 180);
+        let scale : vec2 = this.getFloorScale(shape, buildingType, maxBuildingHeight);
+
         mat4.fromRotation(rotateMat, angle, vec3.fromValues(0, 1, 0));
-        mat4.fromScaling(scaleMat, vec3.fromValues(15, floorHeight, 15));
+        mat4.fromScaling(scaleMat, vec3.fromValues(scale[0], 1, scale[1]));
 
         mat4.multiply(transformMat, rotateMat, scaleMat);
         mat4.multiply(transformMat, translateMat, transformMat);
 
-        floorPlanShapes.push(4);
+        floorPlanShapes.push(shape);
         floorPlanLocalTransformations.push(transformMat);
-        this.renderFloorPlan(p, floorPlanShapes, floorPlanLocalTransformations);
-        height = height - floorHeight;
+        let floorTypes : Array<number> = this.generateFloorTypes(p,
+                                                                 floorPlanShapes,
+                                                                 floorPlanSpecialCases,
+                                                                 floorPlanSpecialCasesCount,
+                                                                 floorHeight,
+                                                                 yOffset,
+                                                                 lastFloor,
+                                                                 buildingType,
+                                                                 maxBuildingHeight);
+        this.renderFloorPlan(p,
+                             floorPlanShapes,
+                             floorPlanLocalTransformations,
+                             floorHeight,
+                             yOffset,
+                             floorTypes);
+        lastYOffset = yOffset;
+        currHeight = currHeight - floorHeight;
+        currFloors++;
       }
     }
     
   }
 
-  // strictly for the rasterizer tester
-  private renderCube(pos: vec2) {
-    let pos3D : vec3 = vec3.fromValues(pos[0], 0, pos[1]);
-    let scale : vec3 = vec3.fromValues(3, 1, 3);
+  private generateFloorTypes(pos: vec2,
+                            fpShapes: Array<number>,
+                            fpSpecialCases: Array<Array<number>>,
+                            fpSpecialCasesCount: Array<Array<number>>,
+                            fpHeight: number,
+                            fpYOffset: number,
+                            fpLast: boolean,
+                            bType: number,
+                            bMaxHeight: number) : Array<number> {
+    
+    // Handle floor type assignment for the entire floor
+    let heightRatio: number = (fpYOffset + (fpHeight / 2)) / bMaxHeight;
+    let floorType: number = 0;
 
-    let color : vec4 = vec4.fromValues(1, 0, 0, 1);
+    /*if(fpShapes.length % 2 == 0) {
+      cubeColor = vec4.fromValues(0.2, 0.8, 0.2, 1.);
+    }*/
 
-    let transform :    mat4 = mat4.create(),
-        scaleMat :     mat4 = mat4.create(),
-        rotateMat :    mat4 = mat4.create(),
-        translateMat : mat4 = mat4.create();
+    switch(bType) {
+      case 1: {
+        let currFloorNumber = fpShapes.length - 1;
+        let floorCaseNum : number = fpSpecialCasesCount[1][1];
 
-    mat4.fromScaling(scaleMat, scale);
-    mat4.fromTranslation(translateMat, pos3D);
-    mat4.multiply(transform, translateMat, scaleMat);
+        if(floorCaseNum < 1
+            && (currFloorNumber == 0 || fpSpecialCases[1][currFloorNumber - 1] != 1)
+            && this.random2D(pos, vec2.fromValues(currFloorNumber, 2 * currFloorNumber)) > 0.6) {
+          floorType = 1;
+        } else {
+          floorType = 10;
+          let windowNum : number = Math.floor(Math.random() * 4);
+          floorType += windowNum;
+        }
 
-    for(let j = 0; j < 4; j++) {
-      this.cubeInstancedAttributes[0].push(transform[j]);
-      this.cubeInstancedAttributes[1].push(transform[4 + j]);
-      this.cubeInstancedAttributes[2].push(transform[8 + j]);
-      this.cubeInstancedAttributes[3].push(transform[12 + j]);
+        break;
+      }
+      case 2: {
+        floorType = 20;
+        let windowNum : number = Math.random() * 3;
+        if(windowNum > 1) {
+          windowNum = Math.ceil(windowNum);
+          windowNum += 2.0;
+        } else {
+          windowNum = 0;
+        }
+
+        floorType += windowNum;
+        break;
+      }
+      case 10: {
+        floorType = 100;
+      }
+      default: {
+        break;
+      }
     }
 
-    for(let j = 0; j < 4; j++) {
-      this.cubeInstancedAttributes[4].push(color[j]);
+    // Take care of special shape cases here (shapes with different textures than the others)
+    let result : Array<number> = [];
+    for(let i = 0; i < fpShapes.length; i++) {
+      if(bType == 2) {
+        let shapeCaseNum : number = fpSpecialCases[0][i];
+        switch(shapeCaseNum) {
+          case undefined:
+            let shapeCaseCount : number = fpSpecialCasesCount[0][1];
+            if(shapeCaseCount < 1
+                && fpShapes[i] == 6
+                && this.random2D(pos, vec2.fromValues(2 * fpShapes.length, -fpShapes.length / 2)) > 0.4) {
+              result.push(2);
+              fpSpecialCases[0].push(1);
+              fpSpecialCasesCount[0][1]++;
+            } else {
+              result.push(floorType);
+              fpSpecialCases[0].push(0);
+              fpSpecialCasesCount[0][0]++;
+            }
+            break;
+          case 1:
+            if(this.random2D(pos, vec2.fromValues(-8 * fpShapes.length, 5 * fpShapes.length)) > 0.6) {
+              result.push(2);
+            } else {
+              result.push(floorType);
+            }
+            break;
+          default:
+            result.push(floorType);
+            break;
+        }
+      } else {
+        result.push(floorType);
+      }
     }
+
+    // Keep track of the assigned floor and shape type here
+    fpSpecialCases[1].push(floorType);
+    fpSpecialCasesCount[1][floorType]++;
+
+    return result;
+
   }
 
   private renderFloorPlan(pos: vec2,
                           fpShapes: Array<number>,
-                          fpLocalTransformations: Array<mat4>) {
-    let translateToBuildingPos : mat4 = mat4.create();
-    mat4.fromTranslation(translateToBuildingPos, vec3.fromValues(pos[0], 0, pos[1]));
+                          fpLocalTransformations: Array<mat4>,
+                          fpHeight: number,
+                          fpYOffset: number,
+                          fpTypes: Array<number>) {
+    let translateToBuildingPos : mat4 = mat4.create(),
+        scaleToFloorHeight     : mat4 = mat4.create();
+
+    mat4.fromTranslation(translateToBuildingPos, vec3.fromValues(pos[0],
+                                                                 this.buildingScale * (fpYOffset + fpHeight / 2),
+                                                                 pos[1]));
+    mat4.fromScaling(scaleToFloorHeight, vec3.fromValues(this.buildingScale,
+                                                         this.buildingScale * fpHeight,
+                                                         this.buildingScale));
+
     for(let i = 0; i < fpShapes.length; i++) { 
-      let worldTransform : mat4 = mat4.create();
-      mat4.multiply(worldTransform, translateToBuildingPos, fpLocalTransformations[i]);
+      let scaledTransform : mat4 = mat4.create(),
+          worldTransform : mat4 = mat4.create();
+
+      mat4.multiply(scaledTransform, scaleToFloorHeight, fpLocalTransformations[i]);
+      mat4.multiply(worldTransform, translateToBuildingPos, scaledTransform);
       switch(fpShapes[i]) {
         case 4: {
           for(let j = 0; j < 4; j++) {
-            this.cubeInstancedAttributes[0].push(worldTransform[j]);
-            this.cubeInstancedAttributes[1].push(worldTransform[4 + j]);
-            this.cubeInstancedAttributes[2].push(worldTransform[8 + j]);
-            this.cubeInstancedAttributes[3].push(worldTransform[12 + j]);
+            this.cubeInstancedTransforms[0].push(worldTransform[j]);
+            this.cubeInstancedTransforms[1].push(worldTransform[4 + j]);
+            this.cubeInstancedTransforms[2].push(worldTransform[8 + j]);
+            this.cubeInstancedTransforms[3].push(worldTransform[12 + j]);
           }
 
-          let cubeColor : vec4 = vec4.fromValues(1, 0, 0, 1);
-
-          for(let j = 0; j < 4; j++) {
-            this.cubeInstancedAttributes[4].push(cubeColor[j]);
-          }
-
+          this.cubeInstancedFloorTypes.push(fpTypes[i]);
           break;
         }
 
         case 6: {
           for(let j = 0; j < 4; j++) {
-            this.hexInstancedAttributes[0].push(worldTransform[j]);
-            this.hexInstancedAttributes[1].push(worldTransform[4 + j]);
-            this.hexInstancedAttributes[2].push(worldTransform[8 + j]);
-            this.hexInstancedAttributes[3].push(worldTransform[12 + j]);
+            this.hexInstancedTransforms[0].push(worldTransform[j]);
+            this.hexInstancedTransforms[1].push(worldTransform[4 + j]);
+            this.hexInstancedTransforms[2].push(worldTransform[8 + j]);
+            this.hexInstancedTransforms[3].push(worldTransform[12 + j]);
           }
 
-          let hexColor : vec4 = vec4.fromValues(0, 1, 0, 1);
-
-          for(let j = 0; j < 4; j++) {
-            this.hexInstancedAttributes[4].push(hexColor[j]);
-          }
-
+          this.hexInstancedFloorTypes.push(fpTypes[i]);
+          
           break;
         }
 
@@ -543,16 +777,36 @@ export default class CityGenerator {
     }
   }
 
+
+  public generateCity() {
+    this.rasterizeWater();
+    this.rasterizeRoads();
+    this.generateBuildingPositions();
+    this.generateBuildings();
+  }
+
+  //////////////////////////////////////
+  // PUBLIC ACCESS FUNCTIONS
+  //////////////////////////////////////
+
   public getBuildingPositions(): Array<vec2> {
     return this.buildingPositions;
   }
 
-  public getCubeInstancedAttributes(): Array<Array<number>> {
-    return this.cubeInstancedAttributes;
+  public getCubeInstancedTransforms(): Array<Array<number>> {
+    return this.cubeInstancedTransforms;
   }
 
-  public getHexInstancedAttributes(): Array<Array<number>> {
-    return this.cubeInstancedAttributes;
+  public getHexInstancedTransforms(): Array<Array<number>> {
+    return this.hexInstancedTransforms;
+  }
+
+  public getCubeInstancedFloorTypes(): Array<number> {
+    return this.cubeInstancedFloorTypes;
+  }
+
+  public getHexInstancedFloorTypes(): Array<number> {
+    return this.hexInstancedFloorTypes;
   }
 
   public getCubeTransformMats() : Array<mat4> {
@@ -567,17 +821,7 @@ export default class CityGenerator {
     return this.buildingPositions.length;
   }
 
-  public generateCity() {
-    this.rasterizeWater();
-    this.rasterizeRoads();
-    this.generateBuildingPoints();
-    /*for(let i = 0; i < this.buildingPositions.length; i++) {
-      this.renderCube(this.buildingPositions[i]);
-    }*/
-    this.generateBuildings();
-  }
 }
-
 
 /* 
   // Returns an array of Edges, in this order:
