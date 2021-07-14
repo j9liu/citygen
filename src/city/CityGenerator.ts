@@ -3,6 +3,26 @@ import Edge from './../road/Edge';
 import Drawable from '../rendering/gl/Drawable';
 import Cube from '../geometry/Cube';
 import HexagonalPrism from '../geometry/HexagonalPrism';
+import {Shape, CaseFlag} from './FloorPlan';
+import FloorPlan from './FloorPlan';
+
+enum BuildingType {
+  SKYSCRAPER_1,
+  SKYSCRAPER_2,
+  SKYSCRAPER_3,
+  HOUSE_1,
+  HOUSE_2
+}
+
+enum FloorType {
+  SKYSCRAPER_1_BASE = 10.0,
+  SKYSCRAPER_1_SPECIAL = 1.0,
+  SKYSCRAPER_2_BASE = 20.0,
+  SKYSCRAPER_2_SPECIAL = 2.0,
+  SKYSCRAPER_3_BASE = 30.0,
+  HOUSE_1_BASE = 100.0,
+  HOUSE_2_BASE = 200.0
+}
 
 export default class CityGenerator {
   public citySize: vec2; // the specified dimensions of city space.
@@ -26,6 +46,7 @@ export default class CityGenerator {
   private roads: Array<Edge>;
   private highwayWidth: number = 3;
   private streetWidth: number = 1.2;
+  private globalGridAngle: number = 0;
 
   private numBuildingsGoal: number = 300;
   private buildingScale = 0.5;
@@ -78,6 +99,10 @@ export default class CityGenerator {
 
   public setStreetWidth(width: number) {
     this.streetWidth = width;
+  }
+
+  public setGlobalGridAngle(angle: number) {
+    this.globalGridAngle = angle;
   }
 
   // Gets the green component of the image
@@ -420,11 +445,11 @@ export default class CityGenerator {
                            shapePositions[trueStartingIndex + 3]);
   }
 
-  private getRandomPointOfFloorPlan(fpShapes: Array<number>,
-                                    fpTransformations: Array<mat4>) : vec3 {
+  private getRandomPointOfFloorPlan(floorPlan: FloorPlan) : vec3 {
     // Choose one of the floor plan shapes at random.
+    let fpShapes : Array<Shape> = floorPlan.shapes;
     let fpIndex : number = Math.floor(Math.random() * fpShapes.length);
-    let chosenShape : number = fpShapes[fpIndex];
+    let chosenShape : Shape = fpShapes[fpIndex];
 
     // Choose one of the bottom indices of the floor plan shape. 
     // These are directly drawn from the positions array in either class.
@@ -434,14 +459,15 @@ export default class CityGenerator {
 
     let originalPos : vec4 = vec4.create();
 
-    if(chosenShape == 4) {
+    if(chosenShape == Shape.SQUARE) {
       chosenIndex = bottomCubeIndices[Math.floor(Math.random() * 4)];
       originalPos = this.getVec4PositionAtIndexFromShape(this.referenceCube, chosenIndex);
-    } else if(chosenShape == 6) {
+    } else if(chosenShape == Shape.HEX) {
       chosenIndex = bottomHexIndices[Math.floor(Math.random() * 6)];
       originalPos = this.getVec4PositionAtIndexFromShape(this.referenceHexPrism, chosenIndex);
     }
 
+    let fpTransformations : Array<mat4> = floorPlan.transformations;
     let localTransform : mat4 = fpTransformations[fpIndex];
     let transformedPos : vec4 = vec4.create();
     vec4.transformMat4(transformedPos, originalPos, localTransform);
@@ -489,13 +515,13 @@ export default class CityGenerator {
   // BUILDING GENERATION
   /////////////////////////////////////
 
-  private getFloorScale(shape: number,
-                        buildingType: number, 
+  private getFloorScale(shape: Shape,
+                        buildingType: BuildingType, 
                         maxBuildingHeight: number) : vec2 {
     let result : vec2 = vec2.create();
-    if(buildingType >= 10) {
-      result = vec2.fromValues(15, 15);
-    } else if(shape == 6) {
+    if(buildingType >= BuildingType.HOUSE_1) {
+      result = vec2.fromValues(12, 12);
+    } else if(shape == Shape.HEX) {
       result = vec2.fromValues(maxBuildingHeight * (2 + Math.random() * 3),
                                maxBuildingHeight * (2 + Math.random() * 3));
     } else {
@@ -510,44 +536,41 @@ export default class CityGenerator {
     this.referenceHexPrism.create();
     for(let p of this.buildingPositions) {
       let pop : number = this.getPopulation(p);
-      let floorPlanShapes : Array<number> = [];
-      let floorPlanLocalTransformations : Array<mat4> = [];
+      let floorPlan : FloorPlan = new FloorPlan();
+      let floorPlanShapes : Array<number> = floorPlan.shapes;
+      let floorPlanLocalTransformations : Array<mat4> = floorPlan.transformations;
 
       // The first array corresponds to the shapes in the floor plan.
       // The second case corresponds to the floors in the entire building.
-      // These keep track of which shapes and / or floors are different
-      // from the others for aesthetic purposes, such as colored columns
-      // or different floors.
-      // In general, 0 is assigned to non-special floors or shapes,
-      // while 1+ is used to designate specific textures depending
-      // on the building type.
-      let floorPlanSpecialCases : Array<Array<number>> = [[], []];
+      // 
+      let floorPlanSpecialCasesShapes : Array<CaseFlag> = floorPlan.specialCasesShapes;
+      let floorPlanSpecialCasesFloors : Array<FloorType> = [];
 
       // This keeps track of how MANY of each special shape / floor there is,
       // while the other array keeps track of the order.
       // This could be constructed every time in the floor type function
       // but this is so low memory that it's easier to track it here.
-      let floorPlanSpecialCasesCount : Array<Array<number>> = [[], []];
+      let floorPlanSpecialCasesShapesCount : Array<number> = floorPlan.specialCasesShapesCount;
+      let floorPlanSpecialCasesFloorsCount : Array<number> = [0, 0, 0];
 
       let lastYOffset = 0;
       let maxFloors : number = 8;
       let currFloors : number = 1;
       let maxBuildingHeight : number = 10;
-      let buildingType : number = 1;
-      floorPlanSpecialCasesCount = [[], [0, 0]];
+      let buildingType : BuildingType = BuildingType.SKYSCRAPER_1;
 
       if(pop > 0.8 * 255) {
         maxBuildingHeight = pop / 40;
         if(Math.random() > 0.5) {
-          buildingType = 2;
-          floorPlanSpecialCasesCount = [[0, 0], []];
+          buildingType = BuildingType.SKYSCRAPER_2;
         }
       } else if(pop > 0.6 * 255) {
         maxBuildingHeight = 4;
+        maxFloors = 5;
       } else {
         maxBuildingHeight = 0.6 + Math.random() * 0.4;
         maxFloors = 2;
-        buildingType = 10;
+        buildingType = BuildingType.HOUSE_1;
       }
 
       let currHeight : number = maxBuildingHeight;
@@ -558,9 +581,9 @@ export default class CityGenerator {
       let lastFloor : boolean = false;
       while(currHeight > 0) {
         // Choose a floor shape to use.
-        let shape : number = this.random2D(p, vec2.fromValues(currFloors, currFloors)) >= 0.5 ? 4 : 6;
-        if(buildingType >= 10) {
-          shape = 4;
+        let shape : Shape = this.random2D(p, vec2.fromValues(currFloors, currFloors)) >= 0.5 ? Shape.SQUARE : Shape.HEX;
+        if(buildingType == BuildingType.HOUSE_1) {
+          shape = Shape.SQUARE;
         }
 
         // Determine the height of the current floor. 
@@ -572,14 +595,24 @@ export default class CityGenerator {
 
         // Create the transformation matrices for the shapes of this floor.
         let transformMat : mat4 = mat4.create(),
-            translateMat : mat4 = mat4.create(),
+            scaleMat     : mat4 = mat4.create(),
             rotateMat    : mat4 = mat4.create(),
-            scaleMat     : mat4 = mat4.create();
+            translateMat : mat4 = mat4.create();
 
         let yOffset : number = 0;
 
+
+
+        let scale : vec2 = this.getFloorScale(shape, buildingType, maxBuildingHeight);
+
         if(floorPlanShapes.length > 0) {
-          let newShapeMidpoint : vec3 = this.getRandomPointOfFloorPlan(floorPlanShapes, floorPlanLocalTransformations);
+          let newShapeMidpoint : vec3 = vec3.create();
+          if(buildingType == BuildingType.HOUSE_1) {
+            let sideOfCube: vec2 = this.getRandomSideOfCube();
+            newShapeMidpoint = vec3.fromValues(sideOfCube[0], 0, sideOfCube[1]);
+          } else {
+            newShapeMidpoint = this.getRandomPointOfFloorPlan(floorPlan);
+          }
           newShapeMidpoint[1] += 0.5;
           mat4.fromTranslation(translateMat, newShapeMidpoint)
           yOffset = lastYOffset - floorHeight;
@@ -589,7 +622,9 @@ export default class CityGenerator {
         }
 
         let angle : number = Math.random() * (45 * Math.PI / 180);
-        let scale : vec2 = this.getFloorScale(shape, buildingType, maxBuildingHeight);
+        if(buildingType == BuildingType.HOUSE_1) {
+          angle = -this.globalGridAngle;
+        }
 
         mat4.fromRotation(rotateMat, angle, vec3.fromValues(0, 1, 0));
         mat4.fromScaling(scaleMat, vec3.fromValues(scale[0], 1, scale[1]));
@@ -600,9 +635,9 @@ export default class CityGenerator {
         floorPlanShapes.push(shape);
         floorPlanLocalTransformations.push(transformMat);
         let floorTypes : Array<number> = this.generateFloorTypes(p,
-                                                                 floorPlanShapes,
-                                                                 floorPlanSpecialCases,
-                                                                 floorPlanSpecialCasesCount,
+                                                                 floorPlan,
+                                                                 floorPlanSpecialCasesFloors,
+                                                                 floorPlanSpecialCasesFloorsCount,
                                                                  floorHeight,
                                                                  yOffset,
                                                                  lastFloor,
@@ -623,42 +658,43 @@ export default class CityGenerator {
   }
 
   private generateFloorTypes(pos: vec2,
-                            fpShapes: Array<number>,
-                            fpSpecialCases: Array<Array<number>>,
-                            fpSpecialCasesCount: Array<Array<number>>,
+                            fp: FloorPlan,
+                            fpSpecialCasesFloors: Array<FloorType>,
+                            fpSpecialCasesFloorsCount: Array<number>,
                             fpHeight: number,
                             fpYOffset: number,
                             fpLast: boolean,
-                            bType: number,
+                            bType: BuildingType,
                             bMaxHeight: number) : Array<number> {
     
     // Handle floor type assignment for the entire floor
     let heightRatio: number = (fpYOffset + (fpHeight / 2)) / bMaxHeight;
-    let floorType: number = 0;
+    let floorType: FloorType;
+    let fpShapes = fp.shapes;
 
     /*if(fpShapes.length % 2 == 0) {
       cubeColor = vec4.fromValues(0.2, 0.8, 0.2, 1.);
     }*/
 
     switch(bType) {
-      case 1: {
+      case BuildingType.SKYSCRAPER_1: {
         let currFloorNumber = fpShapes.length - 1;
-        let floorCaseNum : number = fpSpecialCasesCount[1][1];
+        let specialFloorCaseCount : number = fpSpecialCasesFloorsCount[1];
 
-        if(floorCaseNum < 1
-            && (currFloorNumber == 0 || fpSpecialCases[1][currFloorNumber - 1] != 1)
+        if(specialFloorCaseCount < 1
+            && (currFloorNumber == 0 || fpSpecialCasesFloors[currFloorNumber - 1] != 1)
             && this.random2D(pos, vec2.fromValues(currFloorNumber, 2 * currFloorNumber)) > 0.6) {
-          floorType = 1;
+          floorType = FloorType.SKYSCRAPER_1_SPECIAL;
         } else {
-          floorType = 10;
+          floorType = FloorType.SKYSCRAPER_1_BASE;
           let windowNum : number = Math.floor(Math.random() * 4);
           floorType += windowNum;
         }
 
         break;
       }
-      case 2: {
-        floorType = 20;
+      case BuildingType.SKYSCRAPER_2: {
+        floorType = FloorType.SKYSCRAPER_2_BASE;
         let windowNum : number = Math.random() * 3;
         if(windowNum > 1) {
           windowNum = Math.ceil(windowNum);
@@ -670,8 +706,8 @@ export default class CityGenerator {
         floorType += windowNum;
         break;
       }
-      case 10: {
-        floorType = 100;
+      case BuildingType.HOUSE_1: {
+        floorType = FloorType.HOUSE_1_BASE;
       }
       default: {
         break;
@@ -680,25 +716,27 @@ export default class CityGenerator {
 
     // Take care of special shape cases here (shapes with different textures than the others)
     let result : Array<number> = [];
+    let fpSpecialCasesShapes : Array<CaseFlag> = fp.specialCasesShapes;
+    let fpSpecialCasesShapesCount : Array<number> = fp.specialCasesShapesCount;
     for(let i = 0; i < fpShapes.length; i++) {
-      if(bType == 2) {
-        let shapeCaseNum : number = fpSpecialCases[0][i];
+      if(bType == BuildingType.SKYSCRAPER_2) {
+        let shapeCaseNum : CaseFlag = fpSpecialCasesShapes[i];
         switch(shapeCaseNum) {
           case undefined:
-            let shapeCaseCount : number = fpSpecialCasesCount[0][1];
+            let shapeCaseCount : number = fpSpecialCasesShapesCount[1];
             if(shapeCaseCount < 1
-                && fpShapes[i] == 6
+                && fpShapes[i] == Shape.HEX
                 && this.random2D(pos, vec2.fromValues(2 * fpShapes.length, -fpShapes.length / 2)) > 0.4) {
-              result.push(2);
-              fpSpecialCases[0].push(1);
-              fpSpecialCasesCount[0][1]++;
+              result.push(FloorType.SKYSCRAPER_2_SPECIAL);
+              fpSpecialCasesShapes.push(CaseFlag.SPECIAL_1);
+              fpSpecialCasesShapesCount[1]++;
             } else {
               result.push(floorType);
-              fpSpecialCases[0].push(0);
-              fpSpecialCasesCount[0][0]++;
+              fpSpecialCasesShapes.push(CaseFlag.DEFAULT);
+              fpSpecialCasesShapesCount[0]++;
             }
             break;
-          case 1:
+          case CaseFlag.SPECIAL_1:
             if(this.random2D(pos, vec2.fromValues(-8 * fpShapes.length, 5 * fpShapes.length)) > 0.6) {
               result.push(2);
             } else {
@@ -714,9 +752,9 @@ export default class CityGenerator {
       }
     }
 
-    // Keep track of the assigned floor and shape type here
-    fpSpecialCases[1].push(floorType);
-    fpSpecialCasesCount[1][floorType]++;
+    // Keep track of the assigned floor type here
+    fpSpecialCasesFloors.push(floorType);
+    fpSpecialCasesFloorsCount[floorType]++;
 
     return result;
 

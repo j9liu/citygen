@@ -1,9 +1,9 @@
-import {vec3, vec4} from 'gl-matrix';
+import {vec3, vec4, mat4} from 'gl-matrix';
 import Drawable from '../rendering/gl/Drawable';
 import {gl} from '../globals';
 
 class HexagonalPrism extends Drawable {
-  center: vec4;
+  center: vec3;
   indices: Uint32Array;
   positions: Float32Array;
   normals: Float32Array;
@@ -17,7 +17,7 @@ class HexagonalPrism extends Drawable {
 
   constructor(center: vec3) {
     super(); // Call the constructor of the super class. This is required.
-    this.center = vec4.fromValues(center[0], center[1], center[2], 1);
+    this.center = vec3.fromValues(center[0], center[1], center[2]);
   }
 
   create() {
@@ -175,6 +175,17 @@ class HexagonalPrism extends Drawable {
                                  1, 0,
                                  1, 1
                                  ]);
+
+    let translate : mat4 = mat4.fromTranslation(mat4.create(), this.center);
+    let length : number = this.positions.length;
+    let pos = this.positions;
+    for(let i = 0; i < length; i += 4) {
+      let posScratch : vec4 = vec4.fromValues(pos[i], pos[i + 1], pos[i + 2], pos[i + 3]);
+      vec4.transformMat4(posScratch, posScratch, translate);
+      for(let j = 0; j < 4; j++) {
+        pos[i + j] = posScratch[j];
+      }
+    }
 
     this.generateIdx();
     this.generatePos();

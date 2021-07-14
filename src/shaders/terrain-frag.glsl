@@ -107,7 +107,6 @@ void main() {
 	vec2 coordinates = vec2(-fs_Pos.x, fs_Pos.z) / u_Dimensions;
 	coordinates *= 2.;
 
-	
 	// Land vs. Water Graph
 	float height = pow(fbm2(2.f * coordinates + vec2(1., -0.4)), 5.);
 	if(height < u_WaterLevel) {
@@ -117,21 +116,9 @@ void main() {
   		out_Col = vec4(0.1, 0.1, 0.1, 1.0);
   	} else {
   		float heightRange = 4.7 - u_WaterLevel;
-  		vec3 dullGreen = vec3(44., 112., 71.) / 255.;
-  		vec3 lowCol = vec3(191., 235., 122.) / 255.;
-  		vec3 greyPurple = vec3(97., 91., 107.) / 255.;
-  		vec3 darkPurple = vec3(44., 24., 54.) / 255.;
-  		vec3 purple = vec3(89., 63., 102.) / 255.;
-  		vec3 almostBlack = vec3(0.1);
+  		vec3 dullGreen = vec3(49., 71., 55.) / 255.;
 
-  		float noise = pow(perturbedFbm(coordinates * 10.0), 3.0);
-  		if(noise < 3.0) {
-  			noise = smoothstep(0.0, 3.0, noise);
-  		}
-  		vec3 noiseCol = mix(almostBlack, greyPurple, noise);
-  		noiseCol = mix(purple, noiseCol, fbm2(noiseCol.xz));
-  		vec3 finalCol = darkPurple * 0.4 + dullGreen * 0.2 + 0.4 * noiseCol;
-  		out_Col = vec4(finalCol, 1.);
+  		out_Col = vec4(dullGreen, 1.);
   	}
 	
 }

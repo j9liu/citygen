@@ -113,7 +113,29 @@ float worleyNoise(vec2 pixel) {
 }
 
 void main() {
-	vec3 base = vec3(224., 249., 241.) / 255.;
-	//rgb(255, 246, 219)
-	out_Col = vec4(base, 1.);
+	vec3 result = vec3(0);
+	vec3 pink = vec3(204., 75., 127.) / 255.;
+	vec3 purple = vec3(47., 39., 91.) / 255.;
+	vec3 orange = vec3(250., 134., 67.) / 255.;
+
+	float pinkPurpleDist = distance(fs_Pos, vec2(0.0, -0.75)) / 1.7;
+	vec3 pinkPurpleLerp = mix(pink, purple, pinkPurpleDist);
+
+	float orangeDist = distance(fs_Pos, vec2(0.0, -1.4));
+	vec3 orangeLerp = mix(orange, vec3(0), orangeDist);
+	orangeLerp = max(vec3(0), orangeLerp);
+
+	vec3 skyCol = (pinkPurpleLerp + orangeLerp) * 0.7;
+
+	vec3 starCol = vec3(1.);
+	float star = noise(noise(fs_Pos.y) * 10.0f * noise(fs_Pos.x));
+	if(star > 0.99999f) {
+		starCol = mix(vec3(0), starCol, fs_Pos.y - 0.3);
+		starCol = max(vec3(0), starCol);
+		result = skyCol + starCol;
+	} else {
+		result = skyCol;
+	}
+
+	out_Col = vec4(clamp(result, 0., 1.), 1.);
 }

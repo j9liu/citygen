@@ -141,6 +141,7 @@ function generateRoads() {
 
 function generateCity() {
   cgen.setWaterLevel(controls.waterLevel);
+  cgen.setGlobalGridAngle(controls.globalGridAngle);
   cgen.reset();
   cgen.setRoads(rgen.getAllRoads());
   cgen.generateCity();
@@ -197,7 +198,7 @@ function main() {
   // Create meshes
   createMeshes();
 
-  const camera = new Camera(vec3.fromValues(0, 10, -20), vec3.fromValues(0, 0, 0));
+  const camera = new Camera(vec3.fromValues(0, 12, -20), vec3.fromValues(0, 3, 0));
 
   const renderer = new OpenGLRenderer(canvas);
   renderer.setClearColor(0.2, 0.2, 0.2, 1);
@@ -221,9 +222,9 @@ function main() {
   terrain.setDimensions(aspectRatio * planeHeight, planeHeight);
   terrain.setWaterLevel(controls.waterLevel);
 
-  const flat = new ShaderProgram([
-    new Shader(gl.VERTEX_SHADER, require('./shaders/flat-vert.glsl')),
-    new Shader(gl.FRAGMENT_SHADER, require('./shaders/flat-frag.glsl')),
+  const sky = new ShaderProgram([
+    new Shader(gl.VERTEX_SHADER, require('./shaders/sky-vert.glsl')),
+    new Shader(gl.FRAGMENT_SHADER, require('./shaders/sky-frag.glsl')),
   ]);
 
   const data = new ShaderProgram([
@@ -306,11 +307,11 @@ function main() {
   function tick() {
     camera.update();
     stats.begin();
-    flat.setTime(time++);
+    sky.setTime(time++);
     building.setTime(time++);
     gl.viewport(0, 0, window.innerWidth, window.innerHeight);
     renderer.clear();
-    //renderer.render(camera, flat, [screenQuad]);
+    renderer.render(camera, sky, [screenQuad]);
     renderer.render(camera, terrain, [plane]);
     renderer.render(camera, road, [roadCube]);
     renderer.render(camera, building, [cube, hexagonalPrism]);
@@ -324,13 +325,13 @@ function main() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.setAspectRatio(window.innerWidth / window.innerHeight);
     camera.updateProjectionMatrix();
-    flat.setDimensions(window.innerWidth, window.innerHeight);
+    sky.setDimensions(window.innerWidth, window.innerHeight);
   }, false);
 
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.setAspectRatio(window.innerWidth / window.innerHeight);
   camera.updateProjectionMatrix();
-  flat.setDimensions(window.innerWidth, window.innerHeight);
+  sky.setDimensions(window.innerWidth, window.innerHeight);
 
   // Start the render loop
   tick();

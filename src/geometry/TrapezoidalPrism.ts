@@ -1,9 +1,19 @@
-import {vec3, vec4, mat4} from 'gl-matrix';
+import {vec2, vec3, vec4, mat4} from 'gl-matrix';
 import Drawable from '../rendering/gl/Drawable';
 import {gl} from '../globals';
 
-class Cube extends Drawable {
+function pushVec4ToNumberArray(vec: vec4, array: Array<number>) {
+  for(let i = 0; i < 4; i++) {
+    array.push(vec[i]);
+  }
+}
+
+class TrapezoidPrism extends Drawable {
   center: vec3;
+  topScale: vec2;
+  bottomScale: vec2;
+  height: number;
+
   indices: Uint32Array;
   positions: Float32Array;
   normals: Float32Array;
@@ -15,9 +25,12 @@ class Cube extends Drawable {
   transcol4: Float32Array; // Data for bufTransform4
   floorTypes: Float32Array; // Influences procedural textures in the fragment shader.
 
-  constructor(center: vec3) {
+  constructor(center: vec3, topScale: vec2, bottomScale: vec2, height: number) {
     super(); // Call the constructor of the super class. This is required.
     this.center = vec3.fromValues(center[0], center[1], center[2]);
+    this.topScale = vec2.fromValues(topScale[0], topScale[1]);
+    this.bottomScale = vec2.fromValues(bottomScale[0], bottomScale[1]);
+    this.height = height;
   }
 
   create() {
@@ -58,6 +71,35 @@ class Cube extends Drawable {
                                    0, 1, 0, 0,
                                    0, 1, 0, 0,
                                    0, 1, 0, 0]);
+
+
+  let bottomPos = [ vec4.fromValues(-.5, -.5, -.5, 1),
+                    vec4.fromValues(.5, -.5, -.5, 1),
+                    vec4.fromValues(.5, -.5, .5, 1),
+                    vec4.fromValues(-.5, -.5, .5, 1) ];
+  let topPos = [ vec4.fromValues(-.5, .5, -.5, 1),
+                 vec4.fromValues(.5, .5, -.5, 1),
+                 vec4.fromValues(.5, .5, .5, 1),
+                 vec4.fromValues(-.5, .5, .5, 1) ];
+
+  let bottomScaleMat = mat4.fromScaling(mat4.create(),
+                                        vec3.fromValues(this.bottomScale[0],
+                                                        this.height / 2,
+                                                        this.bottomScale[1]));
+  
+  let topScaleMat = mat4.fromScaling(mat4.create(),
+                                     vec3.fromValues(this.topScale[0],
+                                                     this.height / 2,
+                                                     this.topScale[1]));
+  
+  for(let i = 0; i < 4; i++) {
+    let bPos = bottomPos[i];
+    vec4.transformMat4(bPos, bPos, bottomScaleMat);
+
+    let tPos = topPos[i];
+    vec4.transformMat4(tPos, tPos, topScaleMat);
+  }
+
   this.positions = new Float32Array([-.5, -.5, -.5, 1, // back face
                                      .5, -.5, -.5, 1,
                                      .5, .5, -.5, 1,
@@ -106,18 +148,6 @@ class Cube extends Drawable {
                                  0, 1,
                                  1, 1,
                                  1, 0]);
-
-    let translate : mat4 = mat4.fromTranslation(mat4.create(), this.center);
-    let length : number = this.positions.length;
-    let pos = this.positions;
-    for(let i = 0; i < length; i += 4) {
-      let posScratch : vec4 = vec4.fromValues(pos[i], pos[i + 1], pos[i + 2], pos[i + 3]);
-      vec4.transformMat4(posScratch, posScratch, translate);
-      for(let j = 0; j < 4; j++) {
-        pos[i + j] = posScratch[j];
-      }
-    }
-
     this.generateIdx();
     this.generatePos();
     this.generateNor();
@@ -142,7 +172,7 @@ class Cube extends Drawable {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.bufUV);
     gl.bufferData(gl.ARRAY_BUFFER, this.uvs, gl.STATIC_DRAW);
 
-    console.log(`Created cube`);
+    console.log(`Created trapezoidal prism`);
   }
 
   setInstanceVBOs(col1: Float32Array, col2: Float32Array, col3: Float32Array, col4: Float32Array,
@@ -194,4 +224,4 @@ class Cube extends Drawable {
   }
 };
 
-export default Cube;
+export default TrapezoidPrism;

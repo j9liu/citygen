@@ -15,6 +15,24 @@ in float fs_FloorType;
 
 out vec4 out_Col;
 
+/////////////////////////////////////////
+// FLOOR TYPE VALUES REFERENCE
+/////////////////////////////////////////
+
+const float SKYSCRAPER_1_BASE = 10.0f;
+const float SKYSCRAPER_1_SPECIAL = 1.0f;
+const float SKYSCRAPER_2_BASE = 20.0f;
+const float SKYSCRAPER_2_SPECIAL = 2.0f;
+const float HOUSE_1_BASE = 100.0f;
+
+bool equalsEpsilon(float val1, float val2, float epsilon) {
+	return abs(val1 - val2) < epsilon;
+}
+
+/////////////////////////////////////////
+// MATH / NOISE FUNCTIONS
+/////////////////////////////////////////
+
 // Many of the following functions are pulled from this shader:
 // https://thebookofshaders.com/edit.php#11/wood.frag
 
