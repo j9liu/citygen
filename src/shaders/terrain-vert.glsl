@@ -14,7 +14,7 @@ in vec4 vs_Nor;
 in vec4 vs_Col;
 
 out vec3 fs_Pos;
-out vec4 fs_Nor;
+out vec3 fs_Nor;
 
 /* NOISE FUNCTIONS */
 
@@ -114,6 +114,6 @@ void main()
   	gl_Position = u_ViewProj * modelposition;
 
   	fs_Pos = vs_Pos.xyz;
-  	fs_Nor = u_ViewProj * u_Model * vs_Nor;
+  	fs_Nor = vs_Nor.xyz;
 
 }

@@ -1,6 +1,7 @@
 #version 300 es
 precision highp float;
 
+uniform float u_Time;
 uniform vec3 u_Eye, u_Ref, u_Up;
 uniform vec2 u_Dimensions; // We use this to refer to the scale of the plane
 
@@ -10,10 +11,14 @@ uniform vec3 u_LightColors[3];
 uniform float u_WaterLevel;
 
 in vec3 fs_Pos;
-in vec4 fs_Nor;
+in vec3 fs_Nor;
 out vec4 out_Col;
 
 /* NOISE FUNCTIONS */
+
+float noise(float i) {
+	return fract(sin(vec2(203.311f * float(i), float(i) * sin(0.324f + 140.0f * float(i))))).x;
+}
 
 float random(vec2 p, vec2 seed) {
   return fract(sin(dot(p + seed, vec2(127.1f, 311.7f))) * 43758.5453f);
@@ -30,10 +35,6 @@ float interpNoise2D(float x, float y) {
 	float v3 = random(vec2(intX, intY + 1), vec2(0.));
 	float v4 = random(vec2(intX + 1, intY + 1), vec2(0.));
 
-	/*float i1 = smoothstep(v1, v2, v1 + (v2 - v1) * fractX);
-	if(v1 > v2) {
-		i1 = smoothstep(v2, v1, v2 + (v1 - v2) * fractX);
-	}*/
 	float i1 = mix(v1, v2, fractX);
 	float i2 = mix(v3, v4, fractX);
 	return mix(i1, i2, fractY);
@@ -106,19 +107,46 @@ float worleyNoise(vec2 pixel) {
 void main() {
 	vec2 coordinates = vec2(-fs_Pos.x, fs_Pos.z) / u_Dimensions;
 	coordinates *= 2.;
+	float animationValue = 0.05 * sin(u_Time);
 
+	vec3 result = vec3(0.);
 	// Land vs. Water Graph
 	float height = pow(fbm2(2.f * coordinates + vec2(1., -0.4)), 5.);
 	if(height < u_WaterLevel) {
- 		out_Col = vec4(mix(vec3(66., 134., 244.) / 255., vec3(34., 184., 201.) / 255.,
-	 					   height + worleyNoise(coordinates)), 1.);
+		vec3 view = normalize(u_Eye - u_Ref);
+		float dot = dot(view, fs_Nor);
+		dot = abs(dot);
+		
+		vec3 blue = vec3(66., 134., 244.) / 255.;
+		vec3 darkblue = vec3(19., 18., 46.) / 255.;
+		vec3 purple = vec3(47., 39., 91.) / 255.;
+		vec3 pink = vec3(204., 75., 127.) / 255.;
+
+		float star = random(fs_Pos.xz, vec2(0));
+		vec3 starCol = vec3(1.);
+
+		vec3 skyCol = purple;
+		if(star > 0.996f) {
+			skyCol = starCol;
+		}
+		skyCol = mix(skyCol, pink, height);
+		
+		vec3 base = mix(skyCol, blue, dot);
+		vec3 shading = mix(darkblue, base, (height + 0.4) * worleyNoise(coordinates));
+		
+		vec3 waveCol = vec3(1);
+		float wave = clamp(height - animationValue - 0.32, 0., 1.);
+		result = mix(shading, waveCol, wave);
+
   	} else if(height < u_WaterLevel + 0.05) {
-  		out_Col = vec4(0.1, 0.1, 0.1, 1.0);
+  		out_Col = vec4(0.1, 0.1, 0.1, 1.0); 
   	} else {
   		float heightRange = 4.7 - u_WaterLevel;
-  		vec3 dullGreen = vec3(49., 71., 55.) / 255.;
+  		vec3 dullGreen = vec3(35., 56., 43.) / 255.;
 
-  		out_Col = vec4(dullGreen, 1.);
+  		result = dullGreen;
   	}
+
+  	out_Col = vec4(result, 1.);
 	
 }

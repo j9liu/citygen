@@ -48,7 +48,8 @@ let square: Square,
     cgen: CityGenerator,
     projectionMatrix: mat4,
     lightDirections: Array<vec3> = [],
-    lightColors: Array<vec3> = [];
+    lightColors: Array<vec3> = [],
+    lastTime: number;
 
 
 //////////////////////
@@ -307,8 +308,17 @@ function main() {
   function tick() {
     camera.update();
     stats.begin();
-    sky.setTime(time++);
-    building.setTime(time++);
+     
+    let now = Date.now();
+    if(lastTime) {
+      time += (now - lastTime) / 1000.0;
+    }
+    
+    lastTime = now;
+
+    sky.setTime(time);
+    building.setTime(time);
+    terrain.setTime(time);
     gl.viewport(0, 0, window.innerWidth, window.innerHeight);
     renderer.clear();
     renderer.render(camera, sky, [screenQuad]);

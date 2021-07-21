@@ -475,10 +475,12 @@ export default class CityGenerator {
     return vec3.fromValues(transformedPos[0], transformedPos[1], transformedPos[2]);
   }
 
-  private getRandomSideOfCube() : vec2 {
+  private getPointOffRandomSideOfCube(offset: number) : vec2 {
     let bottomCubeIndices : Array<number> = [16, 17, 18, 19];
     let result : vec2 = vec2.create();
+
     let side : number = Math.ceil(Math.random() * 4);
+    let dir : vec2;
     let index1 : number,
         index2 : number;
     switch(side) {
@@ -601,14 +603,17 @@ export default class CityGenerator {
 
         let yOffset : number = 0;
 
-
-
         let scale : vec2 = this.getFloorScale(shape, buildingType, maxBuildingHeight);
+
+        let angle : number = Math.random() * (45 * Math.PI / 180);
+        if(buildingType == BuildingType.HOUSE_1) {
+          angle = -this.globalGridAngle;
+        }
 
         if(floorPlanShapes.length > 0) {
           let newShapeMidpoint : vec3 = vec3.create();
           if(buildingType == BuildingType.HOUSE_1) {
-            let sideOfCube: vec2 = this.getRandomSideOfCube();
+            let sideOfCube: vec2 = this.getPointOffRandomSideOfCube();
             newShapeMidpoint = vec3.fromValues(sideOfCube[0], 0, sideOfCube[1]);
           } else {
             newShapeMidpoint = this.getRandomPointOfFloorPlan(floorPlan);
@@ -619,11 +624,6 @@ export default class CityGenerator {
         } else {
           mat4.fromTranslation(translateMat, vec3.fromValues(0, 0, 0));
           yOffset = currHeight - floorHeight;
-        }
-
-        let angle : number = Math.random() * (45 * Math.PI / 180);
-        if(buildingType == BuildingType.HOUSE_1) {
-          angle = -this.globalGridAngle;
         }
 
         mat4.fromRotation(rotateMat, angle, vec3.fromValues(0, 1, 0));

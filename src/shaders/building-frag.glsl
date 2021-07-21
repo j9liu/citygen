@@ -19,6 +19,8 @@ out vec4 out_Col;
 // FLOOR TYPE VALUES REFERENCE
 /////////////////////////////////////////
 
+const float DEBUG_RED = -2.0f;
+const float DEBUG_GREEN = -1.0f;
 const float SKYSCRAPER_1_BASE = 10.0f;
 const float SKYSCRAPER_1_SPECIAL = 1.0f;
 const float SKYSCRAPER_2_BASE = 20.0f;
@@ -374,27 +376,30 @@ vec4 getFloorTexture(float floorType, vec2 uv, vec3 pos, vec3 normal) {
 	float windowType = 0.0f;
 
 	// Neon red (debugging)
-	if(abs(floorType + 2.0f) < 0.01f) { 
+	if(equalsEpsilon(floorType, DEBUG_RED, 0.01f)) { 
 		return vec4(1, 0, 0, 1);
 	}
 
 	// Neon green (debugging)
-	else if(abs(floorType + 1.0f) < 0.01f) {	
+	else if(equalsEpsilon(floorType, DEBUG_GREEN, 0.01f)) {	
 		return vec4(0, 1, 0, 1);
 	}
 
-	else if(floorType >= 99.98f) {
+	else if(equalsEpsilon(floorType, HOUSE_1_BASE, 0.01f)) {
+		vec3 opal_blue = vec3(167., 219., 232.) / 255.;
+		vec3 purple = vec3(150., 128., 168.) / 255.;
 		float noise = fbm2(uv * 24.0);
 		noise = pow(noise, 4.0);
 		if(noise > 5.2) {
-			floorCol = vec4(0.2, 0.2, 0.2, 1);
-		} else {
 			floorCol = vec4(1);
+		} else {
+			vec3 lerp = mix(purple, opal_blue, 2.0 * pos.y);
+			floorCol = vec4(lerp, 1.0);
 		}
 	}
 
 	// Dark purple with wave accents
-	else if(floorType >= 19.98f) {
+	else if(floorType >= SKYSCRAPER_2_BASE) {
 		/*float diffX = worleyNoise(uv + vec2(0.05, 0), 0.5) - worleyNoise(uv - vec2(0.05, 0), 0.5);
 		float diffY = worleyNoise(uv + vec2(0, 0.05), 0.5) - worleyNoise(uv - vec2(0, 0.05), 0.5);
 		float gradient = diffX + diffY;
@@ -419,10 +424,10 @@ vec4 getFloorTexture(float floorType, vec2 uv, vec3 pos, vec3 normal) {
 	}
 
 	// Slightly textured blue
-	else if(floorType >= 9.98f) {
+	else if(floorType >= SKYSCRAPER_1_BASE) {
 		vec3 blue = vec3(40.0, 113.0, 126.0) / 255.0;
 		vec3 watermelonGreen = vec3(64.0, 227.0, 156.0) / 255.0;
-		vec3 darkBlue = vec3(2.0, 20.0, 38.0) / 255.0;
+		vec3 darkBlue = vec3(20., 6., 56.) / 255.0;
 
 		float stripeVal = random3D(vec3(uv.x, uv.y, pos.y) / 5.0);
 		float waveVal = squareWave(uv.y, 3.0, 1.0);
@@ -441,21 +446,21 @@ vec4 getFloorTexture(float floorType, vec2 uv, vec3 pos, vec3 normal) {
 	}
 
 	// Animated turquoise rings texture
-	else if(abs(floorType - 1.0f) < 0.01f) {
-		vec3 brightGreen = vec3(2.0, 209.0, 147.0) / 255.0;
-		vec3 cyan = vec3(2.0, 209.0, 202.0) / 255.0;
-		vec2 timeOffset = vec2(u_Time / 1000.0, cos(u_Time / 700.0));
+	else if(equalsEpsilon(floorType, SKYSCRAPER_1_SPECIAL, 0.01f)) {
+		vec3 brightGreen = vec3(0., 237., 250.) / 255.0;
+		vec3 cyan = vec3(93., 192., 217.) / 255.0;
+		vec2 timeOffset = vec2(u_Time / 10.0, cos(u_Time / 7.0));
 
 		float pattern = perturbedFbm(vec2(worleyNoise(uv * 0.2 + pos.xz / 50.0 + timeOffset, 2.0)));
 		pattern = pow(pattern, 3.0);
 
-		vec3 mixedCol = mix(brightGreen, cyan, abs(cos(u_Time / 600.0)));
+		vec3 mixedCol = mix(brightGreen, cyan, abs(cos(u_Time / 6.0)));
 		vec3 col = mixedCol * (0.1 + pattern * 0.25);
 		floorCol = vec4(col, 1);
 	}
 
 	// Animated stripe texture
-	else if(abs(floorType - 2.0f) < 0.01f) {
+	else if(equalsEpsilon(floorType, SKYSCRAPER_2_SPECIAL, 0.01f)) {
 	/*	vec3 basePurple = vec3(16.0, 04.0, 50.0) / 255.0;
 		vec3 accentPurple = vec3(24.5, 16.75, 24.75) / 255.0;
 		

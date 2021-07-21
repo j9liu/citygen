@@ -130,7 +130,7 @@ void main() {
 	vec3 starCol = vec3(1.);
 	float star = noise(noise(fs_Pos.y) * 10.0f * noise(fs_Pos.x));
 	if(star > 0.99999f) {
-		starCol = mix(vec3(0), starCol, fs_Pos.y - 0.3);
+		starCol = mix(vec3(0), starCol, fs_Pos.y - 0.5);
 		starCol = max(vec3(0), starCol);
 		result = skyCol + starCol;
 	} else {
